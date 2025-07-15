@@ -1,4 +1,10 @@
-# MongoDB Sharded Cluster for Data Analysis
+# BSQBD-MongoDB: Distributed Database System for Multi-Dataset Analysis
+
+<p align="center">
+  <a href="README.md"><img alt="en" src="https://img.shields.io/badge/lang-en-red.svg"></a>
+  <a href="README.ua.md"><img alt="ua" src="https://img.shields.io/badge/lang-ua-green.svg"></a>
+  <a href="README.ru.md"><img alt="ru" src="https://img.shields.io/badge/lang-ru-yellow.svg"></a>
+</p>
 
 This project demonstrates a sophisticated, sharded MongoDB cluster environment built with Docker Compose. It's designed to handle and analyze multiple large datasets, showcasing advanced MongoDB features like sharding, replica sets, complex aggregation pipelines, indexing strategies, and security.
 
@@ -7,14 +13,14 @@ This project demonstrates a sophisticated, sharded MongoDB cluster environment b
 ## 📖 Table of Contents
 - [Project Overview](#-project-overview)
 - [Features](#-features)
-- [Tech Stack](#-tech-stack)
-- [System Architecture](#-system-architecture)
+- [Tech Stack](#️-tech-stack)
+- [System Architecture](#️-system-architecture)
   - [Cluster Components](#cluster-components)
   - [The CAP Theorem and Our Configuration](#the-cap-theorem-and-our-configuration)
   - [Sharding Strategy](#sharding-strategy)
   - [Data Persistence and Replication](#data-persistence-and-replication)
   - [Architectural Diagram](#architectural-diagram)
-- [Datasets](#-datasets)
+- [Datasets](#️-datasets)
   - [Dataset Details & Schema](#dataset-details--schema)
 - [Data Analysis & Visualization](#-data-analysis--visualization)
 - [Getting Started](#-getting-started)
@@ -23,6 +29,7 @@ This project demonstrates a sophisticated, sharded MongoDB cluster environment b
 - [Usage](#-usage)
   - [Connecting to the Cluster](#connecting-to-the-cluster)
   - [Cluster Initialization Flow](#cluster-initialization-flow)
+- [Cluster Verification](#-cluster-verification)
 - [Advanced MongoDB Queries Showcase](#-advanced-mongodb-queries-showcase)
 - [Project Structure](#-project-structure)
 - [Contributing](#-contributing)
