@@ -2,6 +2,7 @@
 
 <p align="center">
   <a href="README.md"><img alt="en" src="https://img.shields.io/badge/lang-en-red.svg"></a>
+  <a href="README.cs.md"><img alt="cs" src="https://img.shields.io/badge/lang-cs-blue.svg"></a>
   <a href="README.ua.md"><img alt="ua" src="https://img.shields.io/badge/lang-ua-green.svg"></a>
   <a href="README.ru.md"><img alt="ru" src="https://img.shields.io/badge/lang-ru-yellow.svg"></a>
 </p>
