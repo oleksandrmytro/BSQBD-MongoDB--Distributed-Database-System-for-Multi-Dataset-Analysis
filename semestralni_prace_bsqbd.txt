@@ -1,0 +1,650 @@
+UNIVERZITA PARDUBICE 
+Fakulta elektrotechniky a informatiky
+MongoDB
+Oleksandr Mytro, 3. ro?n?k
+
+
+
+
+
+
+
+V Pardubic?ch dne 26. dubna 2025
+Obsah
+?vod	4
+1	Architektura	5
+1.1	Sch?ma a popis architektury	5
+1.2	Specifika konfigurace	6
+1.2.1	CAP teor?m	6
+1.2.2	Cluster	6
+1.2.3	Uzly	7
+1.2.4	Sharding	7
+1.2.5	Replikace	7
+1.2.6	Perzistence dat	8
+1.2.7	Distribuce dat	9
+1.2.8	Zabezpe?en?	11
+2	Funk?n? ?e?en?	12
+2.1	Struktura	12
+2.2	Instalace	13
+3	P??pady u?it? a p??padov? studie	14
+3.1	Pro jak? ??ely je MongoDB vhodn?	14
+3.2	??el na?? implementace a volba MongoDB	14
+3.3	T?i p??padov? studie pro MongoDB	15
+3.3.1	Forbes – Modernizace CMS v medi?ln? spole?nosti	15
+3.3.2	eBay – ?k?lov?n? dat pro glob?ln? e-commerce	16
+3.3.3	Bosch Digital – IoT platforma pro velk? data v pr?myslu	19
+4	V?hody a nev?hody	23
+4.1	Obecn? v?hody a nev?hody MongoDB	23
+4.2	V?hody a nev?hody na?eho ?e?en?	23
+5	Dal?? specifika	24
+6	Data	24
+6.1	Zdroje a popis dat	24
+6.1.1	Amazon – produktov? data z Amazonu	24
+6.1.2	Google Play Store – data o mobiln?ch aplikac?ch	25
+6.1.3	Video Game Sales – prodeje videoher	25
+6.2	?i?t?n? a p?edzpracov?n? dat	26
+6.3	Import dat do MongoDB	28
+6.4	Pr?zkumn? anal?za a z?kladn? statistiky	28
+6.5	Vizualizace dat a zji?t?n?	30
+7	Dotazy	36
+Z?v?r	37
+Zdroje	39
+P??lohy	41
+
+
+
+?vod
+Tato semestr?ln? pr?ce se zab?v? n?vrhem a realizac? distribuovan?ho datab?zov?ho syst?mu postaven?ho na MongoDB verze 6.0.2. Jej?m c?lem je uk?zat principy fungov?n? distribuovan? datab?ze v praxi – konkr?tn? efektivn? ukl?d?n? a spr?vu dat pomoc? shardingu a replikace, jednoduch? nasazen? kontejnerizovan?ho ?e?en? prost?ednictv?m Dockeru a automatizaci konfigurace.
+?ten?? se v pr?ci dozv? podrobn? popis architektury MongoDB klastru (shardy, konfigura?n? servery, routovac? servery), postupy nastaven? a spu?t?n? jednotliv?ch komponent, p??klady skript? pro automatizaci nasazen? a spr?vy u?ivatelsk?ch rol? a autentizace. D?le se sezn?m? s importem dat (CSV, JSON) a s konkr?tn?mi praktick?mi uk?zkami pr?ce s t?emi r?zn?mi dataset?: produkt? z Amazonu, aplikac? z Google Play Store a prodej? videoher (VG Sales). Ka?d? p??klad ilustruje b??n? operace CRUD, agregace i z?kladn? optimaliza?n? techniky (indexov?n?, shardov?n?).
+Do rozsahu t?to verze projektu nepat?? v?konnostn? testy ani srovn?n? MongoDB s rela?n?mi nebo jin?mi nerela?n?mi datab?zemi (nap?. SQL datab?zemi). Tyto oblasti p?edstavuj? p?irozen? sm?ry pro dal?? roz???en? a prohlouben? v?zkumu v budoucnu.
+1 
+Architektura
+Tato kapitola podrobn? popisuje postup nasazen? MongoDB jako NoSQL datab?ze v distribuovan?m prost?ed?. Pops?n je zp?sob nasazen? datab?ze, jej? konfigurace v r?mci klastru a praktick? vyu?it?.
+1.1 Sch?ma a popis architektury
+
+Navr?en? architektura MongoDB klastru se skl?d? ze t?? hlavn?ch komponent:
+* Shard servery: T?i shardy, z nich? ka?d? tvo?? replikovan? sada (Replica Set). Ka?d? shard obsahuje n?kolik uzl? zaji??uj?c?ch vysokou dostupnost dat a odolnost v??i selh?n?.
+* Konfigura?n? servery (mongod): Speci?ln? sada t?? server?, kter? uchov?vaj? informace o konfiguraci cel?ho klastru. Tato konfigurace p?isp?v? k odolnosti a zaji?t?n? dostupnosti dat.
+* Router (mongos): Jeden router funguj?c? jako vstupn? bod pro aplikace a u?ivatele. Sm?ruje dotazy na p??slu?n? shardy na z?klad? konfigurace ulo?en? na konfigura?n?ch serverech.
+Zvolen? architektura umo??uje efektivn? distribuci z?t??e mezi jednotliv? ??sti datab?ze a poskytuje vysokou dostupnost a odolnost v??i v?padk?m. Horizont?ln? ?k?lov?n? prost?ednictv?m shardingu dovoluje p?id?v?n? dal??ch shard? p?i rostouc?m objemu dat.
+Pou?it? architektura vych?z? z doporu?en?ch standard? pro MongoDB klastry. Men?? odchylky se mohou objevit v nastaven? po?tu uzl?, jejich velikosti nebo dal??ch parametrech, p?izp?soben?ch dostupn?m zdroj?m a po?adavk?m projektu.
+1.2 Specifika konfigurace
+Tato ??st kapitoly rovn?? detailn? popisuje specifika konfigurace MongoDB klastru, v?etn? vyu?it? jednotliv?ch uzl?, implementace shardingu, replikace a zaji?t?n? bezpe?nosti dat. V?b?r konfigurace reflektuje dostupnost v?po?etn?ch prost?edk?, o?ek?van? objem dat a po?adavky na spolehlivost a dostupnost datab?zov?ho syst?mu.
+1.2.1 CAP teor?m
+
+MongoDB jako distribuovan? datab?ze spl?uje dv? hlavn? vlastnosti dle CAP teor?mu: dostupnost (Availability) a konzistenci (Consistency). Konzistence zaji??uje, ?e po ?sp??n?m z?pisu budou v?echna data konzistentn? nap??? v?emi uzly. Dostupnost znamen?, ?e datab?ze odpov?d? na ka?d? po?adavek i p?i nedostupnosti n?kter?ch ??st? syst?mu.
+MongoDB nezaru?uje odolnost v??i s??ov?m rozd?len?m (Partition tolerance) na stejn? ?rovni jako jin? syst?my, av?ak d?ky replikaci a failover mechanismu (automatick?mu p?epnut? na jin? uzel) z?st?v? v?t?inou funk?n? i p?i v?padc?ch.
+Konfigurace klastru byla zvolena s ohledem na tyto priority:
+* spolehliv? z?pis a ?ten? dat,
+* dostupnost syst?mu i p?i selh?n? ??sti infrastruktury,
+* automatick? zvl?dnut? v?padk? bez nutnosti z?sahu ze strany u?ivatele
+1.2.2 Cluster
+V r?mci ?e?en? je nasazen MongoDB sharding cluster, kter? zahrnuje v?echny kl??ov? komponenty:
+* t?i shardovac? sady replik (shard01, shard02, shard03), kde ka?d? sada tvo?? samostatnou replika?n? skupinu,
+* t?i konfigura?n? servery (configsvr1, configsvr2, configsvr3), kter? uchov?vaj? metadata o rozd?len? dat mezi shardy,
+* jeden router (router1), kter? p?esm?rov?v? dotazy na p??slu?n? shard servery.
+V?echna prost?ed? jsou nasazena jako Docker kontejnery, co? zaji??uje snadnou spr?vu, izolaci slu?eb a mo?nost jednoduch?ho horizont?ln?ho ?k?lov?n? p?id?n?m dal??ch shard? nebo uzl? bez p?eru?en? provozu.
+1.2.3 Uzly
+Celkem je spu?t?no dev?t uzl? v shardech a t?i uzly konfigura?n?ch server?:
+* Ka?d? shard obsahuje jednu replika?n? sadu (Replica Set), kter? zahrnuje jeden prim?rn? a dva sekund?rn? uzly (nap?. shard01a, shard01b, shard01c).
+* Konfigura?n? servery tak? tvo?? replika?n? sadu se t?emi uzly, co? zaji??uje vysokou dostupnost metadat.
+* Router (mongos) neukl?d? ??dn? data, pouze sm?ruje klientsk? dotazy k p??slu?n?m shard?m a konfigura?n?m server?m.
+Replikace umo??uje vysokou dostupnost a rozlo?en? z?t??e p?i ?ten? dat ze sekund?rn?ch uzl?, co? zvy?uje celkovou efektivitu clusteru.
+1.2.4 Sharding
+MongoDB implementuje horizont?ln? shardov?n? dat, co? umo??uje distribuovat data mezi v?ce server?. Ka?d? shard obsahuje ??st dat ur?enou shardovac?m kl??em. V tomto ?e?en? jsou nasazeny t?i shardy: shard01, shard02, shard03.
+Konkr?tn? se pou??vaj? n?sleduj?c? typy shardovac?ch kl???:
+* Hashovan? kl??e (product_id, _id): umo??uj? rovnom?rn? rozd?len? dat pro kolekce amazon, googleplaystore, reviews.
+* Range kl??e (Name, Platform): umo??uj? efektivn? prov?d?n? analytick?ch dotaz? pro kolekci vgsales.
+P?i r?stu objemu dat provede MongoDB automatick? rozd?len? a distribuci chunk? prost?ednictv?m intern?ho balanceru.
+1.2.5 Replikace
+Ka?d? shard tvo?? replika?n? sadu se t?emi uzly (1? prim?rn?, 2? sekund?rn?), co? poskytuje vysokou dostupnost a ochranu dat proti ztr?t?. P?i v?padku prim?rn?ho uzlu MongoDB automaticky aktivuje jeden ze sekund?rn?ch uzl? jako nov? prim?rn? (tzv. automatick? failover). Tento mechanismus zaji??uje nep?etr?it? provoz a minimalizuje riziko v?padku slu?eb.
+1.2.6 Perzistence dat
+Zp?sob ?e?en? persistence dat:
+* Shardov?n?: Rozd?len? dat na n?kolik shard? (3 shardovac? sady replik), co? zaji??uje ?k?lovatelnost a efektivn? distribuci velk?ho objemu dat mezi v?ce server?. Shardov?n? je zalo?eno na hashovan?ch kl???ch (nap?. product_id nebo _id) a na kl???ch s rozsahem hodnot (nap?. kombinace Name a Platform).
+* Replikace: Ka?d? shard a konfigura?n? server funguj? jako replikovan? sady, kter? se skl?daj? z prim?rn? instance a dvou sekund?rn?ch instanc?. Replikace zaji??uje vysokou dostupnost, z?lohu dat a automatick? zotaven? v p??pad? selh?n?.
+Pou?it? prim?rn? a sekund?rn? pam?ti:
+* Prim?rn? pam?? (RAM): MongoDB aktivn? vyu??v? prim?rn? pam?? pro ukl?d?n? pracovn?ch sad dat, co? urychluje p??stup a zpracov?n? operac? s daty. Data jsou na??t?na do RAM podle pot?eby dotaz? a index?, co? minimalizuje diskov? I/O operace.
+* Sekund?rn? pam?? (Disk): Data jsou trvale ulo?ena ve form? datov?ch soubor? a ?urn?l? na diskov?ch jednotk?ch (volumes definovan?ch v Docker Compose). Ka?d? instance (shardy, config servery, router) m? sv?j vyhrazen? volume, kter? zachov?v? data a konfigurace.
+Na??t?n? a ukl?d?n? dat:
+* Na??t?n? dat: Prob?h? p?es MongoDB Router (mongos), kter? sm?ruje dotazy na p??slu?n? shardy podle shardovac?ho kl??e. ?ten? m??e prob?hat z prim?rn? instance nebo ze sekund?rn?ch replik d?ky nastaven? readPreference=secondaryPreferred, co? pom?h? distribuovat zat??en? datab?ze.
+* Ukl?d?n? dat: Data se ukl?daj? prim?rn? p?es prim?rn? instance jednotliv?ch shard?, kter? synchronn? replikuj? zm?ny na sekund?rn? instance. Skripty pro import dat (mongoimport) jsou vyu?ity k hromadn?mu nahr?v?n? dataset? (nap?. amazon.csv, googleplaystore.csv, vgsales.csv) p??mo do datab?ze.
+Popis procesu:
+* Datov? soubory jsou importov?ny pomoc? skriptu import_datasets.sh, kter? prov?d? na?ten? CSV soubor? p??mo do MongoDB clusteru p?es MongoDB Router (router-01).
+* Data jsou n?sledn? ulo?ena na shardy v z?vislosti na shardovac?ch kl???ch definovan?ch v inicializa?n?m skriptu (init_cluster.sh).
+* Sekund?rn? instance jsou pravideln? synchronizov?ny s prim?rn?mi instancemi pomoc? MongoDB replikace, ??m? se udr?uje integrita a aktu?lnost dat nap??? v?emi replikami.
+D?ky tomuto syst?mu zaji??ujeme vysokou dostupnost, rychlost a spolehlivost ukl?d?n? a na??t?n? dat.
+1.2.7 Distribuce dat
+V na?em ?e?en? distribuce dat prob?h? pomoc? shardov?n? a replikace, co? zaji??uje optim?ln? vyu?it? zdroj? a vysokou dostupnost dat.
+Shardov?n?
+Data jsou rozd?lena mezi t?i shardy (shard01, shard02, shard03), p?i?em? ka?d? shard uchov?v? ??st dat ur?enou shardovac?m kl??em:
+* Hashovan? kl??e (nap?. product_id, _id) jsou vyu??v?ny pro kolekce amazon, googleplaystore a reviews, co? zaji??uje rovnom?rn? rozlo?en? dat.
+* Range kl??e (Name, Platform) jsou vyu??v?ny pro kolekci vgsales, co? usnad?uje analytick? dotazy.
+
+
+
+
+Replikace
+Ka?d? shard je tvo?en replika?n? sadou se t?emi uzly (1 prim?rn?, 2 sekund?rn?). P?i v?padku prim?rn?ho uzlu MongoDB automaticky provede failover a zvol? sekund?rn? uzel za nov? prim?rn?, co? zaru?uje kontinuitu provozu.
+
+ 
+Proces distribuce dat pro z?pis a ?ten?
+* Z?pis dat prob?h? prim?rn? p?es prim?rn? uzly jednotliv?ch shard?. Data se synchronn? replikuj? na sekund?rn? uzly. Skript import_datasets.sh pou??v? MongoDB router (router-01) pro hromadn? na??t?n? dat z CSV soubor?.
+echo -e "${YELLOW}Importing amazon.csv into Ecommerce.amazon...${NC}"
+mongoimport --host router-01 --port 27017 \
+  --username st69631 --password password --authenticationDatabase admin \
+  --db Ecommerce --collection amazon --type csv --headerline --file /data/amazon.csv
+status=$?
+ 
+echo -e "${YELLOW}Importing googleplaystore.csv into Ecommerce.googleplaystore...${NC}"
+mongoimport --host router-01 --port 27017 \
+  --username st69631 --password password --authenticationDatabase admin \
+  --db Ecommerce --collection googleplaystore --type csv --headerline --file /data/googleplaystore.csv || status=1
+ 
+echo -e "${YELLOW}Importing vgsales.csv into Ecommerce.vgsales...${NC}"
+mongoimport --host router-01 --port 27017 \
+  --username st69631 --password password --authenticationDatabase admin \
+  --db Ecommerce --collection vgsales --type csv --headerline --file /data/vgsales.csv || status=1
+ 
+echo -e "${YELLOW}Importing user reviews into Ecommerce.reviews...${NC}"
+mongoimport --host router-01 --port 27017 \
+  --username st69631 --password password --authenticationDatabase admin \
+  --db Ecommerce --collection reviews --type csv --headerline --file /data/googleplaystore_user_reviews.csv || status=1
+* ?ten? dat je realizov?no prost?ednictv?m MongoDB routeru (mongos). Speci?ln? pro n?? projekt je ?tec? preference nastavena pomoc?:
+readPreference=secondaryPreferred
+Toto nastaven? je definov?no v souboru .env, kter? je pou?it slu?bou cli v docker-compose.yml. Klient se p?ipojuje k MongoDB p?es prom?nnou MONGODB_URI, kter? zahrnuje tuto preferenci:
+MONGODB_URI="mongodb://st69631:password@router-01:27017/Ecommerce?authSource=admin&readPreference=secondaryPreferred"
+ 
+
+D?ky tomu mohou b?t dotazy sm?rov?ny nejen na prim?rn?, ale i na sekund?rn? repliky, ??m? se sni?uje z?t?? na prim?rn?ch uzlech a zvy?uje celkov? v?kon syst?mu.
+Automatick? rozd?len? dat (Balancer)
+MongoDB balancer automaticky sleduje a reguluje distribuci chunk? mezi shardy. Tato funkcionalita je implicitn? spu?t?na b?hem inicializace clusteru skriptem init_cluster.sh, kter? stanovuje po??te?n? shardov?n? a konfiguraci balanceru.
+init_cluster.sh ?
+// Shard amazon (hashed, 8 chunks)
+db.createCollection("amazon")
+sh.shardCollection("Ecommerce.amazon", { product_id: "hashed" }, false, { numInitialChunks: 8 })
+ 
+// Shard googleplaystore (hashed, 4 chunks)
+db.createCollection("googleplaystore")
+sh.shardCollection("Ecommerce.googleplaystore", { _id: "hashed" }, false, { numInitialChunks: 4 })
+ 
+// Shard vgsales (range key) and pre-split
+db.createCollection("vgsales")
+sh.shardCollection("Ecommerce.vgsales", { Name: 1, Platform: 1 }, false)
+ 
+// Manual pre-split for vgsales at Name="M" and Name="T"
+sh.splitAt("Ecommerce.vgsales", { Name: "M", Platform: MinKey() })
+sh.splitAt("Ecommerce.vgsales", { Name: "T", Platform: MinKey() })
+ 
+// Shard reviews (hashed, 8 chunks)
+db.createCollection("reviews")
+sh.shardCollection("Ecommerce.reviews", { _id: "hashed" }, false, { numInitialChunks: 8 })
+
+
+
+
+
+
+
+Po?et z?znam? na jednotliv?ch uzlech
+      Pro ov??en? distribuce dat m??ete pou??t n?sleduj?c? p??kazy:
+// Po?et dokument? v jednotliv?ch kolekc?ch
+db.amazon.countDocuments()
+db.googleplaystore.countDocuments()
+db.vgsales.countDocuments()
+db.reviews.countDocuments()
+
+
+1.2.8 Zabezpe?en?
+Zabezpe?en? datab?ze je ?e?eno pomoc? autentizace a autorizace. V?echny uzly klastru maj? zapnutou autentizaci a vyu??vaj? keyFile pro intern? komunikaci. Tento soubor slou?? jako sd?len? tajemstv? mezi shardy, config servery a routerem a zabra?uje p?ipojen? neopr?vn?n?ch instanc?.
+Byla vytvo?ena u?ivatelsk? role s opr?vn?n?mi pro spr?vu a manipulaci s daty. P??stup k datab?zi je umo?n?n pouze po zad?n? platn?ch p?ihla?ovac?ch ?daj?. V?echny akce lze auditovat, ??m? je zaji?t?na bezpe?nost a kontrola p??stupu.
+2 Funk?n? ?e?en?
+Tato kapitola popisuje proces zprovozn?n? funk?n?ho ?e?en? a jeho vnit?n? strukturu.
+2.1 Struktura
+Projekt je rozd?len do dvou hlavn?ch ??st?: adres??e Data/ a slo?ky Funk?n? ?e?en?/.
+* Data/ obsahuje soubory amazon.csv, googleplaystore.csv a vgsales.csv. Tyto soubory jsou p?i spu?t?n? automaticky importov?ny do MongoDB jako testovac? data.
+* Funk?n? ?e?en?/ p?edstavuje j?dro cel?ho projektu. Obsahuje:
+o docker-compose.yml – definice v?ech kontejner? pro shardy, konfigura?n? servery a router,
+o keyfile/ – slo?ka s Dockerfilem a kl??em mongodb-keyfile pro zabezpe?enou komunikaci v r?mci MongoDB klastru,
+o scripts/ – skripty pro inicializaci klastru, nastaven? autentizace u?ivatel? a import dat (nap?. import_datasets.sh, init_shardxx.js a dal?? ov??ovac? nebo testovac? soubory).
+Tato struktura umo??uje jednoduch? a p?ehledn? zprovozn?n? syst?mu pomoc? jednoho p??kazu s vyu?it?m Dockeru.
+2.2 Instalace
+Pro spu?t?n? ?e?en? je nutn? m?t nainstalovan? Docker a Docker Compose. Cel? ?e?en? bylo navr?eno tak, aby bylo mo?n? jej zprovoznit jedin?m p??kazem, bez pot?eby ru?n?ho spou?t?n? pomocn?ch skript?.
+Postup instalace a nasazen?:
+1. Klonujte repozit?? do c?lov?ho adres??e:
+git clone <repo-url> && cd <repo-folder>
+
+2. Spus?te cel? syst?m pomoc? jedin?ho p??kazu:
+docker compose up -d
+
+Tento p??kaz:
+* vytvo?? a spust? v?echny pot?ebn? kontejnery (router, config servery, shardy),
+* spust? skript init_cluster.sh pro automatickou inicializaci clusteru a nastaven? replikace,
+* nastav? autentizaci a vytvo?? administr?torsk?ho u?ivatele,
+* pomoc? init-data kontejneru spust? skript import_datasets.sh, kter? automaticky na?te vstupn? data do datab?ze,
+* po dokon?en? je syst?m pln? p?ipraven k pou?it?, nen? pot?eba ??dn? ru?n? z?sah.
+Docker Compose vyu??v? depends_on a p??znaky condition: service_completed_successfully, ??m? zaji??uje, ?e jednotliv? ??sti syst?mu startuj? ve spr?vn?m po?ad? a s garantovan?m dokon?en?m p?edchoz?ch krok?.
+3. Pr?ce s datab?z?
+Chcete-li se p?ipojit do MongoDB routeru s nastaven?m readPreference=secondaryPreferred, spus?te:
+docker compose run --rm cli
+Tento p??kaz spust? interaktivn? mongosh shell s p?ednastaven?m p?ipojen?m p?es router na sekund?rn? repliky.
+3 P??pady u?it? a p??padov? studie
+Tato kapitola prezentuje praktick? p??klady vyu?it? MongoDB, oblasti vhodn?ho nasazen? NoSQL datab?z? a d?vody volby tohoto konkr?tn?ho syst?mu. Sou??st? jsou i t?i p??padov? studie re?ln?ho nasazen?.
+3.1 Pro jak? ??ely je MongoDB vhodn?
+MongoDB jako NoSQL datab?ze zalo?en? na dokumentov?m modelu (form?t podobn? JSON) se hod? pro n?sleduj?c? sc?n??e:
+* ukl?d?n? a zpracov?n? polo-strukturovan?ch a nestrukturovan?ch dat,
+* rychl? z?pisy a ?ten? dat i ve velk?m m???tku,
+* horizont?ln? ?k?lov?n? pomoc? shardingu,
+* flexibiln? sch?ma bez nutnosti p?eddefinovan?ch struktur tabulek.
+3.2 ??el na?? implementace a volba MongoDB
+Datov? sady zahrnuj? informace o produktech z Amazonu, aplikac?ch z Google Play Store a datech o prodej?ch videoher (VG Sales). Tyto datasety jsou strukturovan? a polo-strukturovan?, co? je ?in? vhodn?mi pro ukl?d?n? v dokumentov? datab?zi.
+D?vody volby MongoDB:
+* pot?eba snadn?ho importu rozs?hl?ch CSV soubor? a pr?ce s nimi v pr?b?hu provozu,
+* o?ek?van? r?st dat, kter? vy?aduje horizont?ln? ?k?lovatelnost,
+* vestav?n? podpora pro replikaci a sharding pro dosa?en? vysok? dostupnosti,
+* flexibiln? dokumentov? model, kter? umo??uje ulo?en? r?znorod?ch struktur bez nutnosti ?prav sch?matu.
+Alternativn? NoSQL datab?ze nebyly zvoleny z d?vodu nevhodnosti pro dan? p??pad:
+* Key-Value datab?ze neumo??uj? komplexn? dotazov?n?,
+* grafov? datab?ze by byly zbyte?n? slo?it? pro dan? typ dat,
+* sloupcov? orientovan? datab?ze nejsou optim?ln? pro pr?ci s polo-strukturovan?mi daty.
+MongoDB zde p?edstavuje efektivn? kompromis mezi flexibilitou, v?konnost? a jednoduchost? pou?it?.
+3.3 T?i p??padov? studie pro MongoDB
+3.3.1 Forbes – Modernizace CMS v medi?ln? spole?nosti
+Kontext
+Forbes je glob?ln? medi?ln? spole?nost zn?m? sv?m obchodn?m zpravodajstv?m a ?eb???ky. P?sob? v oblasti m?di? ji? p?es sto let a dnes jej? digit?ln? obsah oslovuje kolem 140 milion? u?ivatel? m?s??n? po cel?m sv?t?. Forbes provozuje jeden z nejnav?t?vovan?j??ch zpravodajsk?ch web? a z?rove? rozv?j? elektronick? obchod. V roce 2011 se rozhodl p?ej?t na modern? publika?n? platformu a za?al vyu??vat tehdy novou NoSQL datab?zi MongoDB pro sv?j redak?n? syst?m (CMS). Forbes tak odstartoval digit?ln? transformaci, kter? mu pomohla udr?et pov?st inov?tora v publika?n?m pr?myslu.
+D?vody pro v?b?r MongoDB
+P?vodn? CMS Forbesu b??el on-premise (na vlastn?m hardware) a postupem ?asu p?estal vyhovovat n?rok?m redaktor? i ?ten???. Projevovaly se v?echny typick? probl?my lok?ln?ho ?e?en? – n?ro?n? ?dr?ba server?, pot?eba ru?n?ch z?sah? (nap??klad v?m?na disk? v datacentru) a komplikovan? nasazov?n? aktualizac??(mongodb.com). Syst?m nebyl dostate?n? flexibiln? pro rychl? zav?d?n? nov?ch funkc? a integrac?. Forbes proto v roce 2019 dosp?l k rozhodnut? prov?st z?sadn? modernizaci platformy. Hledali spravovan? cloudov? ?e?en?, kter? by zjednodu?ilo replikaci datab?ze, ?k?lov?n? a spr?vu infrastruktury. Tyto po?adavky nejl?pe spl?ovala slu?ba MongoDB Atlas, je? nab?z? pln? spravovanou multi-cloud datab?zi(mongodb.com)?. MongoDB vyniklo nad konkurenc? sv?m v?voj??sky p??v?tiv?m p??stupem – p?echod ze sv?ta SQL byl relativn? snadn? a t?m mohl vyu??t st?vaj?c? znalosti. D?le?it?m faktorem byla i flexibilita datov?ho modelu MongoDB (dokumentov? orientovan? datab?ze), kter? umo??uje rychle iterovat a p?izp?sobovat se m?n?c?m se po?adavk?m.
+Technick? detaily implementace
+Forbes zvolil MongoDB Atlas (datab?ze jako slu?ba) nasazen? v r?mci Google Cloud Platform pro sv?j nov? CMS. P?echod do cloudu byl velmi rychl? – poda?ilo se jej dokon?it za pouh?ch ?est m?s?c?. Kl??ovou v?hodou Atlasu byla jednoduch? instalace a spr?va: datab?zov? infrastruktura se dala zprovoznit b?hem minut a Atlas zaji??uje automatickou replikaci dat, z?lohov?n? i ?k?lov?n? podle pot?eby. Forbes rovn?? vyu?il odborn? konzultace MongoDB Professional Services a program MongoDB University k rychl?mu za?kolen? sv?ch v?voj???, ??m? hladce zvl?dli p?echod na nov? datab?zov? syst?m. Aplika?n? vrstva (API) i datab?ze byly zcela orchestrace v cloudu, co? zna?n? usnadnilo nasazen? a provoz. P?vodn? fulltextov? vyhled?va? Apache Solr se rozhodli postupn? nahradit funkcionalitou Atlas Search, tedy vestav?n?m vyhled?v?n?m p??mo v MongoDB, aby se zjednodu?ila architektura a zrychlilo vyhled?v?n?(mongodb.com)?. D?ky automatick?mu ?k?lov?n? ?lo?i?t? a v?konu Atlasu se Forbes nemus? starat o kapacitn? pl?nov?n? – syst?m se p?izp?sobuje aktu?ln? z?t??i, co? je obrovsk? v?hoda pro v?voj??e i administr?tory.
+V?sledky nasazen? MongoDB
+P?echod Forbesu na MongoDB Atlas p?inesl dramatick? zlep?en? v?konu i efektivity v?voje. Pr?m?rn? ?asy build? (sestaven? a nasazen? nov?ho k?du) se zkr?tily z 25 minut na pouh?ch 9 minut, co? p?edstavuje zrychlen? o cca 58 %. Nasazov?n? nov?ch verz? softwaru je nyn? 4? rychlej?? ne? d??ve. Modernizace tak? sn??ila celkov? n?klady na vlastnictv? (TCO) o 25 % d?ky omezen? provozu vlastn?ch server?. Flexibilita MongoDB umo?nila Forbesu rychle zav?d?t nov? funkce – nap??klad personalizovan? doporu?en? ?l?nk? pomoc? AI – a l?pe analyzovat chov?n? ?ten??? v re?ln?m ?ase. Tyto inovace vedly k 27–28% n?r?stu po?tu p?edplatitel? (zejm?na d?ky nov?m newsletter?m). Krom? ??seln?ch ukazatel? poc?tili zlep?en? i koncov? u?ivatel?: web Forbes nyn? na??t? str?nky rychleji a nab?z? pohotov?j?? z??itek. Stabiln? v?kon b?hem enormn?ho n?r?stu n?v?t?vnosti (nap??klad v dob? pandemie COVID-19) potvrdil, ?e cloudov? ?e?en? dok??e automaticky ?k?lovat a udr?et dostupnost i p?i rekordn?m provozu. Jak shrnul CTO Forbesu, Vadim Supitskiy, p?esun na Atlas a Google Cloud umo?nil t?mu “inovovat a prosperovat i v t?ch nejt????ch podm?nk?ch”.
+Zaj?mavosti a v?zvy p?i integraci
+Jednou z v?zev byla zm?na my?len? v?voj??? p?i p?echodu z rela?n? datab?ze na dokumentovou. D?ky ?kolen? v?ak t?m rychle zvl?dl vyu??t flexibiln? model MongoDB bez pevn?ho sch?matu. Forbes tak? zjistil, ?e Atlas nab?z? nov? mo?nosti, nap?. integrovan? vyhled?v?n? (Atlas Search), kter? pl?nuj? pln? vyu??t m?sto extern?ho Solru(mongodb.com)?. Migrace st?vaj?c?ch dat do MongoDB Atlas prob?hla postupn? a bez v?t??ch probl?m? – kl??ov? bylo zajistit kompatibilitu a optimalizaci dotaz?, k ?emu? pomohli experti z MongoDB. B?hem integrace se uk?zalo, ?e p?enesen? d??ve on-premise datab?ze do cloudu v?razn? zjednodu?ilo ?dr?bu: odpadla starost o hardware, z?lohy i aktualizace, co? uvolnilo ruce v?voj???m k inovac?m. Forbes nyn? pokra?uje ve v?voji nov? funkcionality – krom? zm?n?n?ho vyhled?v?n? pl?nuje d?le rozv?jet svou platformu pro p?edplatn? a personalizaci obsahu s podporou MongoDB. P??pad Forbesu tak ukazuje, ?e i tradi?n? medi?ln? d?m m??e d?ky MongoDB a cloudu proj?t ?sp??nou digit?ln? transformac?, zv??it v?kon syst?mu a rychleji p?in??et novinky sv?m u?ivatel?m.
+3.3.2 eBay – ?k?lov?n? dat pro glob?ln? e-commerce
+Kontext
+eBay je jedn?m z nejv?t??ch internetov?ch tr?i?? na sv?t?, p?sob? v odv?tv? e-commerce (online maloobchod). S v?ce ne? 170 miliony aktivn?ch kupuj?c?ch a 1 miliardou aktivn?ch aukc? v 190 zem?ch pat?? eBay mezi top 10 glob?ln?ch maloobchodn?ch zna?ek(mongodb.com). Pro takovou platformu je kritick? nep?etr?it? dostupnost a rychl? odezva syst?mu – i kr?tk? v?padek by mohl ovlivnit obrovsk? mno?stv? transakc?. eBay proto investuje do robustn? infrastruktury a mimo jin? ji? ?adu let vyu??v? MongoDB jako jednu ze sv?ch kl??ov?ch datab?zov?ch technologi?. MongoDB zde funguje jako sou??st centr?ln? datov? platformy, kter? poh?n? v?cero aplikac? p??mo na webu eBay.
+D?vody pro v?b?r MongoDB
+eBay kombinuje r?zn? datab?zov? syst?my (rela?n? i NoSQL) podle konkr?tn?ch pot?eb aplikac?. Pro n?kter? ?lohy ale nar??eli na limity tradi?n?ch SQL datab?z? z hlediska v?konu a ?k?lovatelnosti. Nap??klad funkce na?ept?v?n? vyhled?v?n? (vyhled?vac? na?ept?va?) vy?aduje, aby dotaz do datab?ze a vr?cen? n?vrh? prob?hlo do 60–70 milisekund, jinak nebude u?ivatelsk? dojem uspokojiv?. Takov? odezva je s rela?n? datab?z? obt??n? dosa?iteln? p?i obrovsk?m objemu dat eBay. Spole?nost proto experimentovala s dokumentovou datab?z? MongoDB, aby zjistila, zda dok??e pot?ebn? v?kon zajistit. D?le?it?m faktorem v?b?ru MongoDB byla i flexibilita datov?ho modelu – eBay pot?eboval ukl?dat r?znorod? data, nap?. metadata ke v?em produktov?m fotografi?m, kde pevn? sch?ma rela?n? DB p?ek??elo. V r?mci projektu Zoom ukl?d? eBay ve?ker? m?dia a metadata k produkt?m do MongoDB, pr?v? kv?li pru?n?mu modelov?n? dat a lep?? v?konov? charakteristice. MongoDB nav?c nab?z? vestav?nou replikaci a vysokou dostupnost: jako distribuovan? datab?ze zvl?d? provoz ve v?ce datacentrech, co? bylo pro eBay kl??ov? k dosa?en? odolnosti v??i v?padk?m. S postupn?m zr?n?m NoSQL technologi? eBay zjistil, ?e MongoDB ji? podporuje i pokro?il? funkce (nap?. konzistentn? z?lohy v ?ase) a je dostate?n? spolehliv?, aby mohlo slou?it i pro kritick? data (tzv. system of record)(mongodb.com)?. Kombinace ?k?lovatelnosti (sharding), v?konu a schopnosti zpracovat neust?le se m?n?c? datov? form?ty u?inila z MongoDB logickou volbu pro v?ce kl??ov?ch slu?eb eBay.
+Technick? detaily implementace
+eBay provozuje tis?ce MongoDB instanc? v r?zn?ch clusterech – celkov? p?es 3 000 datab?zov?ch uzl? NoSQL spravuj?c?ch dohromady n?kolik petabajt? dat. Architektura je navr?ena s d?razem na odolnost a ?k?lov?n?. Jedn?m z osv?d?en?ch vzor? je nasazen? MongoDB v podob? replika?n? sady o 7 uzlech rozprost?en?ch mezi v?ce datacentr?m. Tato konfigurace zaji??uje, ?e i p?i v?padku v?ce uzl? (?i cel?ho datacentra) z?stane datab?ze dostupn? a automaticky zvol? nov? prim?rn? replika?n? uzly. Pro extr?mn? n?roky na v?kon eBay vyu??v? tak? ?k?lov?n? do pam?ti – n?kter? datov? sady uchov?v? v RAM, ??m? dosahuje mimo??dn? rychl?ch odpov?d?. Nap??klad seznamy n?vrh? vyhled?v?n? byly v MongoDB navr?eny tak, ?e ka?d? mo?n? dotaz (slovn? prefix) je ulo?en jako dokument dopln?n? o metadata (nap?. kategorie produkt?). Na tyto dokumenty byly vytvo?eny indexy podle prefix? i kategori?, co? umo??uje velice rychl? vyhled?n? relevantn?ch n?vrh?. Tato sb?rka pro na?ept?va? b??? na jedin? replika?n? sad? bez shardingu, p?i?em? datov? set je ulo?en v pam?ti pro maxim?ln? rychlost. D?ky tomu MongoDB dok??e vracet n?vrhy b?hem 1,4 ms – tedy hluboko pod po?adovan?m limitem 70 ms. Kde je pot?eba horizont?ln? ?k?lovat, eBay vyu??v? sharding (rozd?len? dat mezi v?ce uzl?). V minulosti eBay dokonce vyvinul vlastn? aplika?n? vrstvu pro sharding nad n?kter?mi NoSQL datab?zemi, aby zm?rnil v?konnostn? dopady rebalancov?n? dat po v?padku uzlu. U MongoDB v?ak vestav?n? auto-sharding spolu s replikac? pokr?v? v?t?inu pot?eb, co? zjednodu?uje architekturu. eBay rovn?? db? na z?lohov?n? a testov?n? obnovy – d?ky funkcionalit?m MongoDB m??e d?lat konzistentn? z?lohy a v p??pad? pot?eby rychle obnovit data do ur?it?ho bodu v ?ase?(mongodb.com).
+V?sledky nasazen? MongoDB
+MongoDB v eBay umo?nil realizovat funkcionality, kter? by jinak byly obt??n? nebo nemo?n?. Vyhled?vac? na?ept?va? nyn? funguje s bleskovou odezvou – n?vrhy se u?ivateli zobrazuj? prakticky okam?it?, do 2 milisekund od zad?n? dotazu. T?m se zlep?ila u?ivatelsk? zku?enost a pravd?podobnost, ?e u?ivatel rychle najde, co hled?. D?ky automatick?mu shardingu m??e eBay snadno ?k?lovat sv? datab?ze s r?stem po?tu u?ivatel? a dat, ani? by bylo t?eba slo?it? redesignovat aplikace – MongoDB se star? o rovnom?rn? rozlo?en? dat a z?t??e. To se uk?zalo jako z?sadn? nap??klad u online her od EA (Electronic Arts), kde MongoDB v prost?ed? s miliony hr??? prok?zalo, ?e dok??e jednodu?e p?id?vat dal?? uzly p?i n?r?stu popularity hry? (eBay takovou mo?nost vyu??v? pro sv? rostouc? mno?stv? dat z transakc?). Nasazen?m MongoDB eBay tak? dos?hl vy??? dostupnosti: i p?i poru?e hardware nedoch?z? k v?padku slu?by, replika?n? sady zajist? pokra?ov?n? provozu. Intern? testy prok?zaly, ?e MongoDB spl?uje p??sn? po?adavky na konzistenci a obnovu dat, tak?e mu eBay za?al sv??ovat i v?ce kritick?ch datov?ch ?loh(mongo.com)?. D?le?it?m p??nosem je rovn?? rychlej?? v?voj – v?voj??i mohou vyu??vat flexibiln? sch?ma a rychleji m?nit datov? modely podle pot?eb nov?ch funkc?, bez zdlouhav?ch migrac? jako v p??pad? SQL datab?z?. Celkov? MongoDB pomohl eBay udr?et krok s obrovsk?m r?stem platformy a o?ek?v?n?m z?kazn?k? na rychl? a spolehliv? slu?by v glob?ln?m m???tku.
+Zaj?mavosti a v?zvy b?hem integrace
+Integrace MongoDB v eBay p?i?la postupn? – nejprve v r?mci izolovan?ho projektu (ulo?i?t? obr?zkov?ch metadat), n?sledn? pro vyhled?vac? na?ept?va? a dal?? slu?by. Jednou z v?zev bylo nastaven? optim?ln? architektury pro vysokou dostupnost. eBay musel pe?liv? navrhnout geograficky distribuovan? repliky, aby dos?hl skute?n? odolnosti proti v?padk?m region?. Tak? bylo nutn? p?izp?sobit monitorov?n? a spr?vu – eBay vyvinul sadu Resilience Design Patterns, osv?d?en?ch postup?, jak udr?et datab?zov? slu?by MongoDB co nejd?le v provozu (maximalizovat MTTF) a v p??pad? probl?mu je co nejrychleji obnovit (minimalizovat MTTR). Dal?? zaj?mavost? je, ?e eBay porovn?val MongoDB s jin?mi NoSQL datab?zemi. N?kter? z nich (s peer-to-peer architekturou bez master uzlu) sice nab?zej? snadn? ?k?lov?n?, ale po v?padku uzlu vy?aduj? n?ro?n? rebalance dat, co? do?asn? sni?uje v?kon. MongoDB d?ky modelu s prim?rn?m/sekund?rn?mi uzly tyto situace l?pe zvl?d? a eBay tak nemusel ?e?it tak rozs?hl? v?padky v?konu p?i obnov?. B?hem integrace se t?m eBay tak? u?il nejlep??m praktik?m pro modelov?n? dat v MongoDB – nap??klad zjistili, ?e pro n?kter? dotazy je v?hodn?j?? denormalizovat data do jednoho dokumentu (jako u na?ept?va?e), m?sto d?lat v?ce dotaz?. V?voj??i eBay se postupn? vzd?lali (?asto i pomoc? bezplatn?ch online kurz? MongoDB University podobn? jako jinde) a dok?zali p?ej?t na “MongoDB zp?sob my?len?”, v?etn? zm?ny p??stupu od SQL relac? k dokumentov? orientovan?m dotaz?m. P??pad eBay tak demonstruje, jak lze MongoDB ?sp??n? nasadit v mission-critical aplikac?ch glob?ln?ho rozsahu, zajistit ?pi?kov? v?kon (v ??du milisekund) a ?k?lovat na stovky milion? u?ivatel?.
+3.3.3 Bosch Digital – IoT platforma pro velk? data v pr?myslu
+Kontext
+Bosch je p?edn? sv?tov? technologick? a v?robn? spole?nost p?sob?c? ve v?ce odv?tv?ch – od automobilov?ho pr?myslu a pr?myslov? automatizace po spot?ebn? zbo?? (dom?c? spot?ebi?e, elektron??ad?) a Internet v?c? (IoT). V r?mci koncernu Bosch p?sob? divize Bosch Digital, kter? se zam??uje na digit?ln? inovace a pr?ci s daty z IoT za??zen?. Bosch Digital provozuje slu?bu Bosch IoT Insights, je? sb?r? a analyzuje obrovsk? objemy dat z p?ipojen?ch za??zen? po cel?m sv?t?. IoT data p?ich?zej? z r?zn?ch odv?tv? – nap??klad maloobchod, energetika, zem?d?lstv?, chytr? mobilita ?i pr?myslov? v?roba. Pro p?edstavu: Bosch IoT Insights zpracov?v? data z v?robn?ch n?stroj?, kter? utahuj? 6 milion? ?roub? a matic p?i mont??i jednoho letadla, p?i?em? ka?d? ?daj o momentu a ?hlu uta?en? je kriticky d?le?it?. Dal??m zdrojem dat jsou elektronick? ??dic? jednotky (ECU) v automobilech, kter? zaznamen?vaj? chov?n? ?idi?e a vozu – tato anonymizovan? telemetrie pom?h? v?voj???m vylep?ovat konstrukci vozidel. Bosch Digital tak stoj? p?ed ?kolem uchov?vat a zpracov?vat ohromn? objemy r?znorod?ch dat v re?ln?m ?ase, a prom?nit je v u?ite?n? poznatky pro in?en?ry i z?kazn?ky.
+D?vody pro v?b?r MongoDB
+Aby Bosch Digital dok?zal z IoT dat vyt??it maximum, pot?eboval datab?zovou platformu, kter? zvl?dne velmi ?k?lovateln?, v?konn? a flexibiln? zpracov?n? dat. Tradi?n? p??stupy, jako ukl?d?n? dat do objektov?ho ?lo?i?t?, nebyly dostate?n? operativn? – vy?adovaly zdlouhav? na??t?n? dat p?ed ka?dou anal?zou, co? st?lo ?as a pen?ze?(mongodb.com). Bosch hledal ?e?en?, kter? umo?n? data okam?it? dotazovat a analyzovat bez zbyte?n?ch mezikrok?. Proto se rozhodli pro MongoDB, kter? dok??e spravovat obrovsk? objemy dat a vytv??et sjednocen? pohled na data z v?ce zdroj? v re?ln?m ?ase(mongodb.com)?. Kl??ovou v?hodou MongoDB je flexibiln? dokumentov? model (BSON/JSON), jen? umo??uje p?irozen? ukl?dat strukturovan? i nestrukturovan? data z IoT senzor?. Data z ka?d?ho typu za??zen? lze mapovat do odpov?daj?c?ho dokumentu v datab?zi a nen? nutn? dop?edu definovat pevn? sch?ma, kter? by omezovalo budouc? roz?i?ov?n?. Tato dynamick? sch?mata podporuj? agiln? v?voj – projekty v Bosch Digital si samy definuj? datov? struktury, kter? pot?ebuj?, a platforma je schopna je obslou?it. Pokud se po?adavky ?asem zm?n?, datov? model se jednodu?e uprav?, ani? by to rozbilo ostatn? ??sti syst?mu. Bosch rovn?? ocenil, ?e MongoDB nab?z? podporu r?zn?ch typ? dotaz? a index? – od sekund?rn?ch index? p?es fulltextov? vyhled?v?n? a? po geospatial dotazy – co? je pro IoT data nezbytn? (mohou pot?ebovat filtrovat data podle ?asu, polohy, typu senzoru apod.). Nem?n? d?le?it? byla i ot?zka ?k?lov?n? a dostupnosti: MongoDB v enterprise verzi nebo Atlasu zaji??uje vysokou dostupnost (replikace s automatick?m fail-over) a horizont?ln? ?k?lovatelnost na cluster v?ce uzl?, a to i v multi-cloud prost?ed?. Pro Bosch, kter? spolupracuje s r?zn?mi cloudov?mi poskytovateli (nap?. Microsoft Azure), byla nez?vislost na konkr?tn?m cloudu a mo?nost nasadit datab?zi kdekoli z?sadn? v?hodou. Celkov? tedy Bosch zvolil MongoDB kv?li rychlosti zpracov?n? velk?ch dat, flexibilit? pro heterogenn? IoT data, snadn?mu v?voji bez komplexn? spr?vy sch?mat a robustn? ?k?lovatelnosti a dostupnosti.
+Technick? detaily implementace
+Bosch Digital nasadil MongoDB jako centr?ln? datov? ?lo?i?t? pro platformu IoT Insights. V?echny p??choz? datov? toky ze senzor? a za??zen? jsou ukl?d?ny v re?ln?m ?ase do MongoDB, kde jsou okam?it? k dispozici pro anal?zu. Datab?ze je navr?ena tak, aby pojmula ohromn? objemy ?asov?ch ?ad dat – k tomu Bosch hodl? vyu??t i specializovan? Time Series Collections v MongoDB (kolekce optimalizovan? pro ?asov? ?ady), jakmile budou pln? dostupn?, co? p?inese je?t? efektivn?j?? ukl?d?n? a dotazov?n? nad ?asov?mi daty. Aktu?ln? t?m Bosch spravuje indexy a strukturu dat manu?ln?; nap??klad pokud se n?kter? dotazy za?nou zpomalovat, p?idaj? vhodn? index, aby se v?kon vr?til na po?adovanou ?rove?. V MongoDB vyu??vaj? bohat? mo?nosti agregac? – Aggregation Framework a MapReduce – kter? umo??uj? nad nasb?ran?mi daty prov?d?t slo?it? analytick? dotazy a v?po?ty p??mo v datab?zi. To znamen?, ?e mnoho analytick?ch ?loh lze realizovat bez pot?eby exportovat data do extern?ch syst?m?, co? ?et?? ?as. Dokumentov? struktura (JSON) usnad?uje v?voj???m pr?ci – data z IoT za??zen? ?asto p?ich?zej? v JSON form?tu, tak?e je lze bez velk?ch transformac? ulo?it p??mo do MongoDB. P?id?v?n? nov?ch typ? za??zen? ?i senzor? je jednoduch?: sta?? za??t ukl?dat jejich data, ani? by bylo nutn? upravovat centr?ln? sch?ma datab?ze. MongoDB tak odstra?uje neflexibilitu tradi?n?ch SQL sch?mat a v?voj??i se mohou soust?edit na logiku aplikac? m?sto na migra?n? skripty. Pro zaji?t?n? vysok? dostupnosti a v?konu v glob?ln?m m???tku pravd?podobn? Bosch vyu??v? v?ceuzlov? replika?n? sady ?i cluster MongoDB Atlas (p??padov? studie zmi?uje enterprise-grade availability a zero downtime). D?raz je kladen i na bezpe?nost a compliance – MongoDB umo??uje pokro?il? zabezpe?en? dat (?ifrov?n?, p??stupov? pr?va), co? je pro citliv? pr?myslov? data nutnost?. Bosch Digital tak? t?sn? spolupracuje s dodavatelem: MongoDB Inc. naslouch? zp?tn? vazb? a vylep?uje produkt v dal??ch verz?ch podle pot?eb z?kazn?k?, nav?c m? Bosch p??mou podporu od MongoDB t?mu, kdykoli je t?eba vy?e?it komplikace. Cel? platforma je navr?en? tak, aby byla cloudov? neutr?ln? – MongoDB lze provozovat jak on-premise, tak v r?zn?ch cloudech, a Bosch pl?nuje vyu??t Azure pro ukl?d?n? z?kaznick?ch dat, co? MongoDB bez probl?m? umo??uje d?ky podpo?e multi-cloud nasazen?.
+V?sledky nasazen? MongoDB
+D?ky MongoDB dok??e Bosch Digital poskytovat sv?m z?kazn?k?m a in?en?r?m aktu?ln? a akceschopn? poznatky z velk?ch dat rychle a efektivn?. Platforma IoT Insights nyn? snadno d?v? smysl obrovsk?m objem?m dat – a? u? jde o ?daje ze stroj? v tov?rn?, nebo z vozidel na silnic?ch – a to nap??? r?zn?mi use-casy. Flexibilita MongoDB v?razn? zkr?tila dobu nutnou k nasazen? nov?ch projekt?: jednotliv? t?my nemus? ?ekat na n?vrh a vytvo?en? nov?ch datab?zov?ch sch?mat centr?ln?m odd?len?m, prost? definuj? data, kter? cht?j? ukl?dat, a MongoDB je dok??e obslou?it. To p?in??? agilitu – pokud se v pr?b?hu v?voje zjist?, ?e je pot?eba ukl?dat dal?? atribut senzoru, lze ho p?idat do dokumentu bez nutnosti migrace cel? datab?ze. Z?kazn?ci Bosch d?ky tomu mohou experimentovat s daty – otestovat, jak ur?it? struktura ?i dotaz funguje, je?t? ne? se definitivn? rozhodnou pro konkr?tn? datov? model. MongoDB tak podporuje kulturu fail-fast a u?en? se z iterac?, co? je v oblasti IoT a big data velmi cenn?. Vzhledem k rostouc?mu v?znamu machine learningu a AI hraje MongoDB d?le?itou roli i v Bosch: umo??uje uchov?vat a rychle dotazovat historick? data, na kter?ch lze tr?novat modely a d?lat prediktivn? anal?zy. Bosch hl?s?, ?e s MongoDB mohou “inovovat mnohem rychleji s men??m ?sil?m”, proto?e mohou stav?t na p?ede?l?ch zku?enostech a nemusej? v?e za??nat od nuly. Platforma postaven? na MongoDB tak? dosahuje podnikov? po?adovan? spolehlivosti a ?k?lovatelnosti – je schopn? nep?etr?it?ho provozu bez v?padk? (zero downtime) i p?i velk?m objemu dat, spl?uje vysok? bezpe?nostn? standardy, a z?rove? ekonomicky roste spolu s daty (n?klady rostou line?rn? s p?id?v?n?m kapacity, nejsou tam skokov? investice do monolitick?ch datab?z?). To v?e znamen?, ?e Bosch m??e odemykat nov? zdroje p??jm? a optimalizovat sv? produkty a slu?by vyu?it?m dat, ani? by musel v?razn? zvy?ovat z?t?? na sv? v?vojov? t?my ?i investovat do komplikovan? infrastruktury. Stru?n? ?e?eno, MongoDB pomohlo Bosch Digital prom?nit IoT data ve skute?nou konkuren?n? v?hodu – p??pady vyu?it? velk?ch dat jsou prakticky neomezen? a MongoDB umo??uje realizovat ka?d? z nich.
+Zaj?mavosti a v?zvy b?hem integrace
+P?i zav?d?n? MongoDB do IoT platformy Bosch musel t?m ?elit n?kolika v?zv?m. Jednou z nich bylo zvl?dnut? enormn? rychlosti a objemu IoT dat – senzory mohou pos?lat ?daje v taktu minut ?i dokonce sekund, a syst?m je musel pojmout. MongoDB se osv?d?ilo svou schopnost? rychl?ch z?pis? i ?ten? ve velk?m paralelismu, a Bosch p??padn? ?k?luje cluster p?id?n?m uzl?, pokud objem dat roste nad r?mec st?vaj?c? kapacity. Zaj?mavost? je, ?e Bosch Digital pom?h? sv?m z?kazn?k?m (intern?m i extern?m) s p?echodem na nov? zp?sob pr?ce s daty: poskytuj? podporu jak ps?t SQL-like dotazy v MongoDB nebo jak efektivn? vyhled?vat. To nazna?uje, ?e jednou z v?zev bylo i vzd?l?v?n? u?ivatel?, kte?? byli zvykl? na SQL – museli se nau?it vyu??vat agregace a indexy v MongoDB. Bosch tuto v?zvu ?e?? proaktivn? t?m, ?e monitoruje dotazy a pokud jsou pomal?, navrhne ?pravu datov?ho modelu ?i vytvo?en? indexu. Dal??m specifikem IoT ?e?en? je pr?ce s ?asov?mi ?adami – ne? MongoDB vyvinulo specializovanou podporu, Bosch musel spravovat ?asov? data manu?ln? (nap?. d?lit je do kolekc? po ??stech ?asu). Vyhl??en? zaveden? Time Series Collections v MongoDB v?ak tento proces zjednodu?? a poskytne vy??? v?kon p?i dotazov?n? nap??? ?asem. Z hlediska architektury Bosch ocenil, ?e MongoDB je multi-cloud – jedna z v?zev ve velk?ch korporac?ch je vyhnout se z?vislosti na jednom dodavateli cloudu. MongoDB lze provozovat on-premise i v cloudu r?zn?ch poskytovatel?, co? Bosch umo??uje migraci ??sti dat do Azure a vyu?it? tamn?ch analytick?ch slu?eb, ani? by musel m?nit datab?zovou platformu. Integrace MongoDB prob?hala v ?zk? spolupr?ci s MongoDB Inc. – Bosch poskytoval zp?tnou vazbu na typick? sc?n??e IoT a MongoDB vylep?uje sv? produkty tak, aby t?mto sc?n???m vyhov?ly (nap?. ji? zm?n?n? ?asov? kolekce). Celkov? lze ??ci, ?e Bosch Digital d?ky MongoDB z?skal jednotnou datovou platformu pro IoT, na kter? dok?zal vybudovat robustn? slu?by odoln? v??i budouc?m v?zv?m. Tato p??padov? studie ukazuje, ?e i v pr?myslov?m gigantu s obrovsk?m d?dictv?m dok?zali vyu??t modern? NoSQL datab?zi k urychlen? inovac? a z?sk?n? konkuren?n? v?hody v ??e pr?myslov?ho internetu v?c?.
+
+
+4 V?hody a nev?hody
+Tato kapitola shrnuje obecn? klady a z?pory datab?zov?ho syst?mu MongoDB a hodnot? konkr?tn? siln? a slab? str?nky aktu?ln?ho ?e?en?.
+4.1 Obecn? v?hody a nev?hody MongoDB
+V?hody:
+* Flexibilita datov?ho modelu: Dokumentov? struktura (BSON/JSON) umo??uje ulo?en? r?znorod?ch dat bez nutnosti pevn? definovan?ho sch?matu.
+* Horizont?ln? ?k?lov?n?: Pomoc? shardingu lze snadno roz?i?ovat kapacitu datab?ze p?id?v?n?m dal??ch shard?.
+* Vysok? dostupnost: Replikace a automatick? failover udr?uj? datab?zi funk?n? i p?i selh?n? n?kter?ho uzlu.
+* Rychl? v?voj a jednoduch? import dat: N?stroje jako mongoimport umo??uj? efektivn? pr?ci s CSV/JSON soubory.
+* Vestav?n? agrega?n? framework: Pokro?il? anal?za a transformace dat bez nutnosti extern?ch n?stroj?.
+Nev?hody:
+* Mo?n? nekonzistence p?i v?padc?ch: MongoDB preferuje dostupnost, co? m??e v?st k do?asn? nekonzistenci dat.
+* Slo?it?j?? lad?n? v?konu: Efektivita z?vis? na spr?vn?m v?b?ru shard kl??e, indexov?n? a topologie.
+* Citlivost na s??ovou infrastrukturu: Latence mezi uzly v distribuovan?m prost?ed? m??e ovlivnit v?kon syst?mu.
+4.2 V?hody a nev?hody na?eho ?e?en?
+V?hody:
+* ?k?lovatelnost: D?ky shardingu lze syst?m flexibiln? roz?i?ovat podle r?stu dat.
+* Vysok? dostupnost: Ka?d? shard je replikov?n ve t?ech uzlech, co? umo??uje provoz bez p?eru?en? i p?i v?padku n?kter? ??sti syst?mu.
+* Automatizace nasazen?: Pou?it? docker-compose a p?ipraven?ch skript? zaji??uje rychl? a bezchybn? zprovozn?n? datab?zov?ho prost?ed?.
+* Efektivn? import dat: CSV soubory jsou automaticky na??t?ny p?i spu?t?n? syst?mu.
+* Flexibiln? dotazov?n?: Dokumentov? model podporuje roz?i?ov?n? struktury ulo?en?ch z?znam? bez z?sahu do sch?matu.
+Nev?hody:
+* Slo?itost infrastruktury: Nastaven? v?ce uzl?, replikace a konfigurace klastru vy?aduj? zv??en? n?roky na spr?vu a prost?edky.
+* Z?vislost na stabiln? s?ti: Distribuovan? architektura klade vy??? n?roky na kvalitu s??ov?ho propojen? mezi uzly.
+Celkov? ?e?en? nab?z? vysokou m?ru spolehlivosti a flexibility. D?ky shardingu je syst?m p?ipraven na budouc? roz???en? bez nutnosti z?sadn?ch zm?n v architektu?e.
+5 Dal?? specifika
+Implementace MongoDB je provedena v souladu s doporu?en?mi praktikami pro sharding a replikaci. V?echny kl??ov? komponenty (shardy, konfigura?n? servery, router) jsou nakonfigurov?ny standardn?m zp?sobem a integruj? se s automatiza?n?mi skripty.
+Syst?m neobsahuje ??dn? specifick? nebo nestandardn? ?pravy, co? umo??uje jednodu??? spr?vu a snadn?j?? ?dr?bu. Nasazen? odpov?d? doporu?en?mu modelu MongoDB a pokr?v? v?echny d?le?it? aspekty bez nutnosti alternativn?ch nebo slo?it?j??ch ?e?en?.
+6 Data
+6.1 Zdroje a popis dat
+V r?mci projektu pracujeme se t?emi r?zn?mi datov?mi sadami (datasets), kter? jsme z?skali z ve?ejn?ch zdroj?. V?echny t?i datasety jsou ve form?tu CSV (comma-separated values). N??e popisujeme ka?d? dataset, jeho p?vod (zdroj a p??padn? URL), strukturu (po?et sloupc?, p??tomnost ID, datov? typy) a obsahov? zam??en?.
+6.1.1 Amazon – produktov? data z Amazonu
+Prvn? dataset obsahuje informace o produktech z e-shopu Amazon. Data poch?zej? z Kaggle – konkr?tn? z datov? sady “Amazon Sales Dataset” vytvo?en? u?ivatelem Karkavelraja J., kter? byla sesb?r?na webov?m scrapov?n?m ofici?ln?ho webu Amazon v lednu 2023(zenodo.org). Dataset je dostupn? ve form? CSV souboru amazon.csv (cca 4,7 MB)?(kaggle.com). Tento soubor obsahuje 1465 z?znam? (??dk?), z nich? ka?d? reprezentuje jeden produkt na Amazonu (v?etn? jedn? uk?zkov? recenze). Data maj? celkem 16 sloupc??. Mezi hlavn? atributy pat??: unik?tn? identifik?tor produktu product_id (slou?? jako ID), n?zev produktu, kategorie, aktu?ln? (sn??en?) cena a p?vodn? cena, procentu?ln? sleva, pr?m?rn? hodnocen? produktu (rating) a po?et hodnocen? (rating_count), d?le textov? popis produktu a informace o jedn? u?ivatelsk? recenzi (ID a jm?no u?ivatele, ID recenze, titulek a obsah recenze) a tak? odkazy na obr?zek produktu a na produktovou str?nku? (zenodo.org) . V?echny sloupce byly v origin?le na?teny jako textov? (?et?zcov?) hodnoty. Kl??ov? numerick? ?daje jako ceny, procenta slev ?i hodnocen? jsou tedy pot?eba p?ev?st na ??seln? datov? typy (viz ?i?t?n? dat n??e). Dataset neobsahuje mnoho chyb?j?c?ch hodnot – v?t?ina produkt? m? v?echny ?daje vypln?ny; pouze u ~10 z?znam? chyb?l n?zev ?i cena (co? jsme vy?e?ili p?i ?i?t?n? dat odstran?n?m t?chto ne?pln?ch z?znam?). Celkov? tato datov? sada poskytuje komplexn? pohled na produkty na Amazonu v?etn? jejich cen, slev a hodnocen? od z?kazn?k?.
+6.1.2 Google Play Store – data o mobiln?ch aplikac?ch
+Druh? datov? sada obsahuje informace o mobiln?ch aplikac?ch z obchodu Google Play. Dataset jsme z?skali takt?? z Kaggle, kde je dostupn? jako “Google Play Store Apps”?(medium.com). Soubor googleplaystore.csv m? 13 sloupc? a obsahuje 10 841 z?znam? (??dk?), z nich? ka?d? p?edstavuje jednu mobiln? aplikaci dostupnou na Google Play Store?(datacareer.de). Mezi atributy pat?? n?zev aplikace, kategorie (nap?. GAME, FAMILY, TOOLS,...), pr?m?rn? hodnocen? aplikace (stupnice 1–5), po?et u?ivatelsk?ch recenz?, velikost aplikace, po?et instalac? (downloads), typ aplikace (Free/Paid), cena (v USD pro placen? aplikace, jinak 0), v?kov? hodnocen? obsahu (Content Rating, nap?. Everyone, Teen), hlavn? ??nr/y aplikace, datum posledn? aktualizace, aktu?ln? verze a minim?ln? vy?adovan? verze syst?mu Android?(tamoghnasaha-22.medium.com). Datov? typy jsou kombinac? ?et?zc? (n?zev, kategorie, atd.) a ??seln?ch/textov?ch hodnot, kter? v?ak ?asto obsahuj? jednotky nebo symboly (nap?. po?et instalac? je uveden jako text "1,000,000+"). Tento dataset nem? vylo?en? explicitn? ID sloupec – unik?tn? identifik?tor by mohl b?t odvozen nap?. z n?zvu aplikace (p??padn? kombinace n?zvu a dal??ch atribut?), p?i?em? p?i importu do datab?ze jsme se spolehli na automaticky generovan? _id v MongoDB. Chyb?j?c? hodnoty: ve zdrojov?ch datech chyb? hodnocen? u ??sti aplikac? – rating m? vypln?no pouze 9367 z 10841 z?znam?? (tj. asi 13,6 % aplikac? nem? rating, patrn? proto?e byly nov? nebo nedostate?n? hodnocen?). N?kolik z?znam? postr?dalo tak? ?daj o aktu?ln? verzi ?i Android verzi (??dov? jednotky p??pad?). Celkov? v?ak v?t?ina pol? (n?zev, kategorie, po?et instalac? atd.) je vypln?na u v?ech z?znam?. Tento dataset umo??uje analyzovat popularitu aplikac? (po?ty instalac?), jejich hodnocen? a kategorizaci.
+6.1.3 Video Game Sales – prodeje videoher
+T?et?m datasetem jsou historick? data o prodej?ch videoher po cel?m sv?t?. Data poch?zej? op?t z Kaggle, kde jsou k dispozici jako “Video Game Sales” dataset. Jde o ?asto citovanou sadu, kter? kombinuje ?daje z hern?ho pr?myslu (pravd?podobn? p?evzat? z VGChartz a dal??ch zdroj?). Dataset obsahuje 16 598 z?znam? (po odstran?n? 2 ne?pln?ch ??dk?) a 11 sloupc??. Ka?d? z?znam p?edstavuje jednu konkr?tn? videohru (typicky titul na dan? platform?). Atributy zahrnuj?: Rank (po?ad?) – po?ad? hry podle celosv?tov?ch prodej? (unik?tn? hodnota 1–16598, lze ji pou??t jako ID z?znamu), Name – n?zev hry, Platform – platforma/konzole (nap?. Wii, PC, X360, PS4,...), Year – rok vyd?n?, Genre – ??nr hry (Action, Sports, RPG, atd.), Publisher – vydavatelsk? spole?nost, a d?le numerick? atributy ud?vaj?c? odhad po?tu prodan?ch kus? (v milionech) v r?zn?ch regionech: NA_Sales (Severn? Amerika), EU_Sales (Evropa), JP_Sales (Japonsko), Other_Sales (zbytek sv?ta) a Global_Sales (celosv?tov? prodeje, co? je sou?et v?ech region?)?. V?echna prodejn? ??sla jsou ??seln?ho datov?ho typu (desetinn? ??slo, jednotka = milion prodan?ch kus?). Tento dataset neobsahuje ??dn? textov? recenze ani hodnocen? – jedn? se ?ist? o numerick? obchodn? data. Po p?ed?i?t?n? dat (odstran?n? dvou z?znam? s chyb?j?c?mi ?daji) v n?m nez?st?vaj? chyb?j?c? hodnoty v ??dn?m sloupci – pro ka?dou hru m?me kompletn? informace o roce, ??nru, prodej?ch atd. Tato data umo??uj? analyzovat historick? trendy v prodej?ch her, obl?ben? ??nry a ?sp??nost vydavatel? na r?zn?ch trz?ch.
+6.1.4 Google Play Store – u?ivatelsk? recenze
+(dataset googleplaystore_user_reviews)
+Pro ??ely uk?zky pr?ce s vno?en?mi (embedded) dokumenty v MongoDB byl k hlavn?mu datasetu „Google Play Store Apps“ p?id?n pomocn? dataset googleplaystore_user_reviews. Obsahuje p?edem normalizovan? textov? recenze u?ivatel? k jednotliv?m aplikac?m (pole review_id, app_name, translated_review, sentiment_polarity, sentiment_subjectivity aj.). D?ky samostatn? kolekci lze na recenze c?len? prov?d?t pokro?il? operace nad vno?en?mi strukturami, zejm?na:
+* agregace a statistiky sentimentu ($unwind ? $group, v?po?et pr?m?rn? polarity, t??d?n? recenz? podle d?lky textu),
+* filtrov?n? vno?en?ch pol? ($elemMatch, podm?nky na sentiment_polarity ?i tagy),
+* transformace a obohacen? dokument? ($project, $addFields, vytv??en? derivovan?ch metadat, nap?. d?lka recenze nebo tematick? ?t?tky).
+Odd?len? recenz? do vlastn? kolekce z?rove?:
+* zjednodu?uje ?k?lov?n? – objem recenz? m??e r?st nez?visle na tabulce aplikac?,
+* zp?ehled?uje datov? model – aplikace a jejich hodnocen? jsou logicky odd?leny,
+* demonstruje flexibilitu MongoDB – snadn? ukl?d?n? heterogenn?ch dat bez pevn?ho sch?matu a rychl? dotazov?n? nad embedded poli.
+Tato kolekce se importuje automaticky spolu s ostatn?mi CSV soubory (import_datasets.sh) a p?i spu?t?n? clusteru je shardov?na hashovan?m kl??em _id, aby se z?pis i ?ten? rovnom?rn? rozkl?daly mezi uzly.
+
+6.2 ?i?t?n? a p?edzpracov?n? dat
+P?ed nahr?n?m do datab?ze bylo nutn? v?echny t?i datasety o?istit a p?ev?st do vhodn? struktury pomoc? Pythonu (knihovny Pandas, NumPy apod.). N??e uv?d?me hlavn? kroky ?i?t?n? dat pro ka?d? dataset:
+* Amazon (produkty): Ceny byly v datab?zi Amazonu uv?d?ny s m?nou a dal??mi symboly – nap?. indick? rupie ? p?ed cenou. Nejprve jsme tedy odstranili symbol m?ny (?) a tak? p??padn? odd?lova?e tis?c? ?i jin? nepovolen? znaky z cenov?ch pol? (actual_price, discounted_price)?. N?sledn? jsme tyto sloupce p?evedli z textu na ??seln? typ (desetinn? ??slo – ceny v m?n?). Podobn? jsme o?istili procenta slev – odstran?n? znaku % a konverze na ??seln? typ (0–100). U hodnocen? produktu (rating) a po?tu hodnocen? (rating_count) jsme provedli p?evod na float, resp. integer. D?le jsme zkontrolovali chyb?j?c? hodnoty – n?kolik m?lo z?znam? nem?lo vypln?n? n?zev produktu ?i cenu; tyto ne?pln? ??dky jsme odstranili, jeliko? p?edstavovaly zanedbateln? zlomek dat. V?sledkem je ?ist? tabulka, kde ka?d? ??dka obsahuje kompletn? informace o dan?m produktu v jednotn?m form?tu (nap?. ??seln? sloupce mohou b?t d?le pou?ity pro v?po?ty).
+* Google Play (aplikace): Tento dataset vy?adoval odstranit ?i upravit n?kolik specifick?ch znak? v datech. Ze sloupce Installs (po?et instalac?) jsme odstranili znam?nko “+” a ??rky v ??slech (nap?. "1,000,000+" -> 1000000) a p?evedli hodnotu na integer, abychom z?skali skute?n? ??seln? po?ty instalac?. Ve sloupci Price jsme u placen?ch aplikac? odstranili symbol “$” (nap?. "$4.99" -> 4.99) a pot? p?evedli cenu na ??seln? typ (float); u neplacen?ch aplikac? z?stala cena 0. Sloupec Reviews (po?et recenz?) byl na?ten jako text, ten jsme p?evedli na integer. D?le jsme sjednotili ozna?en? velikosti aplikace – polo?ky "Varies with device" (li?? se podle za??zen?) jsme nahradili hodnotou NaN (nezn?m? hodnota), proto?e je nelze kvantifikovat. P?i ?i?t?n? jsme tak? narazili na nekonzistentn? ??dek, kde chyb?la kategorie a posunuly se hodnoty v sloupc?ch; tento vadn? z?znam jsme odstranili, aby data byla spr?vn? zarovn?na. Rovn?? jsme eliminovali p??padn? duplicitn? z?znamy (pokud se tat?? aplikace v datasetu objevila dvakr?t). Nakonec jsme zkontrolovali chyb?j?c? ?daje – sloupec Rating m? cca 1474 chyb?j?c?ch hodnot (tyto z?znamy jsme ponechali a s NaN hodnotami pracovali opatrn? p?i v?po?tech pr?m?r?), u 1 z?znamu chyb?l Content Rating a u n?kolika aplikac? nebyla uvedena verze (ponech?no jako nevypln?n?). Po t?chto ?prav?ch z?stalo v datasetu 10840 platn?ch z?znam? (po odstran?n? chybn?ch ?i duplicitn?ch ??dk?).
+* Videohern? prodeje: Tato datov? sada byla ji? v relativn? dobr? kvalit?. Identifikovali jsme 2 ??dky s chyb?j?c?mi ?daji, pravd?podobn? chyb?j?c? rok ?i prodejn? ??sla – ty jsme odstranili (??m? se po?et z?znam? sn??il z 16 600 na 16 598. N?sledn? jsme provedli drobn? ?pravy typ?: rok vyd?n? jsme p?evedli na celo??seln? typ (integer) a prodejn? ??sla ponechali jako desetinn? ??sla (float). Hodnoty celosv?tov?ch prodej? jsme pro kontrolu p?epo??tali jako sou?et region?ln?ch prodej?, abychom ov??ili jejich konzistenci (souhlasily). V tomto datasetu nebylo pot?eba odstra?ovat ??dn? speci?ln? znaky – ??sla ji? byla uvedena p??mo (v milionech kus?). Data tak byla p?ipravena k anal?ze bez dal??ch z?sah?.
+6.3 Import dat do MongoDB
+Po vy?i?t?n? byla data nahr?na do datab?zov?ho syst?mu MongoDB. Pro import jsme vyu?ili n?stroj mongoimport, kter? umo??uje importovat CSV soubory p??mo do MongoDB kolekc?. Cel? proces byl zautomatizov?n ve skriptu import_datasets.sh, jen? b??el uvnit? Docker kontejneru nazvan?ho init-data. Skript p?i startu kontejneru spustil sekvenci p??kaz? mongoimport pro ka?d? dataset.
+V?echna data byla ulo?ena do jedn? MongoDB datab?ze s n?zvem Ecommerce, ka?d? datov? sada v samostatn? kolekci (nap?. amazon, googleplatstore, vgsales). V MongoDB tak ka?d? z?znam z CSV odpov?d? jednomu dokumentu ve sv? kolekci. Prim?rn? kl??e nebylo nutn? ru?n? vytv??et – MongoDB automaticky p?id?lilo ka?d?mu dokumentu jedine?n? _id. Import pomoc? Docker kontejneru zajistil, ?e data budou p?ipravena k pou?it? ihned po spu?t?n? aplikace, bez nutnosti manu?ln?ho z?sahu.
+Pro? pr?v? MongoDB? Zvolili jsme MongoDB zejm?na kv?li jej? flexibilit? a snadn? integraci s Dockerem. MongoDB je dokumentov? NoSQL datab?ze, kter? nevy?aduje p?edem pevn? definovan? sch?mata – to se hod?, proto?e na?e t?i datasety maj? odli?nou strukturu a nelze je jednodu?e vt?snat do jedn? rela?n? tabulky. MongoDB umo??uje ukl?dat ka?dou datovou sadu samostatn?, s r?zn?mi poli, a p??padn? je roz?i?ovat o nov? atributy bez migrac? sch?matu. D?le, objem dat (n?kolik des?tek tis?c z?znam?) pro MongoDB nep?edstavuje probl?m a dotazov?n? nad nimi je rychl?. Vyu?it? MongoDB n?m tedy poskytlo flexibiln? ?lo?i?t? schopn? pojmout heterogenn? data z e-commerce, mobiln?ch aplikac? i hern?ho pr?myslu na jednom m?st?.
+6.4 Pr?zkumn? anal?za a z?kladn? statistiky
+Po importu jsme nad daty provedli z?kladn? statistick? anal?zy a explora?n? datovou anal?zu pomoc? knihoven Pandas a NumPy. C?lem bylo z?skat p?ehled o obsahu dataset? – nap??klad po?ty z?znam?, rozsahy hodnot, pr?m?ry, sumy, ?etnosti kategori? a podobn? – a odhalit p??padn? zaj?mav? vzory ?i odchylky. N??e uv?d?me shrnut? kl??ov?ch poznatk? pro ka?d? dataset:
+* Amazon (produkty): Celkem m?me 1465 produkt? nap??? ~160 r?zn?mi kategoriemi (podkategorie Amazonu; n?kter? jsou velmi specifick?). Pr?m?rn? aktu?ln? cena produktu po slev? je zhruba 35 USD, zat?mco pr?m?rn? p?vodn? cena byla kolem 60 USD – to nazna?uje, ?e typick? sleva je okolo 40–45%. Potvrdili jsme to i v?po?tem pr?m?rn? hodnoty sloupce discount_percentage, kter? vy?el ~42%. Hodnocen? produkt? jsou na Amazonu obecn? vysok?: pr?m?rn? u?ivatelsk? hodnocen? je cca 4,4 hv?zdi?ky z 5 a medi?n dokonce 4,5. Nej?ast?ji se v datech vyskytuj? produkty z kategori? jako elektronika a p??slu?enstv? – nap?. kategorie Surge Protectors, Memory nebo Streaming Clients. Spo??tali jsme, ?e nejv?ce produkt? spad? do kategorie Accessories a Beverages (ob? po ~50 produktech). D?le jsme zjistili, ?e korelace mezi cenou a hodnocen?m nen? v?razn? – dra??? produkty nemaj? nutn? lep?? hodnocen? (viz vizualizace n??e). Celkov? po?et hodnocen? (rating_count) se mezi produkty velmi li??: n?kter? polo?ky maj? jen des?tky hodnocen?, jin? i n?kolik tis?c (pr?m?rn? po?et hodnocen? je ~550). Souhrnn? jsme ov??ili, ?e datov? soubor pokr?v? ?irokou ?k?lu produkt? s r?zn?mi cenov?mi ?rovn?mi a v?t?ina z nich je velmi dob?e hodnocena z?kazn?ky.
+* Google Play (aplikace): Dataset obsahuje informace o 10 840 aplikac?ch (po o?i?t?n?). Tyto aplikace jsou rozd?leny do 34 r?zn?ch kategori?; zjistili jsme, ?e nejpo?etn?j?? kategori? je Family (rodinn? a d?tsk? aplikace), kter? zahrnuje kolem 1900 aplikac?, d?le Game (~1100 aplikac?) a Tools (~800). Naopak nejm?n? zastoupen? jsou kategorie jako Dating ?i Events. Pokud jde o hodnocen?, pr?m?rn? rating aplikace je ~4,17 (tj. v?t?ina aplikac? m? hodnocen? okolo 4 a? 4,5 hv?zdi?ky). P?ibli?n? 13,5 % aplikac? nem? hodnocen? uvedeno (NaN), co? jsme zohlednili – p?i v?po?tu pr?m?ru hodnocen? jsme brali v ?vahu pouze hodnocen? aplikace. Po?et instalac? se mezi aplikacemi velmi li?? – rozp?t? je od jednotek (n?kter? nov? aplikace maj? nap?. jen 5+ instalac?) a? po v?ce ne? 1 miliardu. Vypo??tali jsme, ?e medi?n po?tu instalac? spad? do kategorie 10 000+ a? 50 000+ (tj. pro typickou aplikaci des?tky tis?c sta?en?). Drtiv? v?t?ina aplikac? je zdarma – konkr?tn? cca 92.5% jsou Free a jen ~7.5% placen? (to odpov?d? pom?ru na Google Play). Mezi placen?mi aplikacemi je pr?m?rn? cena relativn? n?zk?, kolem 2–3 USD (v?t?ina placen?ch stoj? do 5 USD, jen n?kolik m?lo p?ekra?uje 20 USD). Zaj?mav?m zji?t?n?m je, ?e hodnocen? aplikac? nekoreluje siln? s po?tem instalac? – i mal? nov? aplikace mohou m?t vysok? hodnocen? 5.0, zat?mco n?kter? masov? stahovan? aplikace maj? hodnocen? “jen” kolem 4.0 (u?ivatel? jsou n?ro?n?j??). Tento dataset n?m tak poskytl p?ehled o ekosyst?mu mobiln?ch aplikac? – v?me, kter? kategorie dominuj?, jak? jsou typick? po?ty sta?en? a ?e u?ivatelsk? sk?re je u v?t?iny aplikac? kladn?.
+* Videohern? prodeje: V datasetu je zahrnuto 16 598 her vydan?ch v letech 1980–2020. Pr?m?rn? hra z na?eho vzorku prodala ~0,53 milionu kus? (tj. ~530 tis?c kopi?), p?i?em? medi?n je je?t? ni??? (~0,17 mil.) – to ukazuje, ?e distribuce prodej? je velmi skewed (v?t?ina her m? relativn? n?zk? prodeje, ale existuje p?r obrovsk?ch hit?). Nejprod?van?j?? hra v datech je Wii Sports (Nintendo, 2006) s 82,74 miliony prodan?ch kus? glob?ln? – v?razn? outlier. Druh? v po?ad? je Grand Theft Auto V (~55 milion?) a d?le Super Mario Bros., Tetris apod. Celkov? sou?et glob?ln?ch prodej? v?ech her v datasetu je zhruba 9 miliard kus?. Z hlediska ??nr? jsou nejpo?etn?ji zastoupeny hry ??nru Action (ak?n?, cca 3316 her) a Sports (2346 her?, n?sleduj? Shooter, Role-Playing, atd. – co? nazna?uje, jak? typy her vych?zely nej?ast?ji. Co se t??e prodej? podle regionu, Severn? Amerika tvo?? nejv?t?? pod?l na glob?ln?ch prodej?ch (zhruba 50 % v?ech prodej? poch?z? z NA), druh?m nejv?t??m trhem je Evropa (~30 %), n?sleduje Japonsko (~15 %) a zbytek sv?ta (~5 %). Tento pom?r jsme z?skali se?ten?m prodej? ve sloupc?ch NA_Sales, EU_Sales, JP_Sales a Other_Sales – nap??klad souhrn pro NA region je kolem 4320 milion? kus?, zat?mco glob?ln? souhrn srovnateln?ch dat ~8926 mil. Nazna?uje to, ?e severoamerick? trh byl pro hern? pr?mysl nejz?sadn?j??. D?le jsme zkoumali vydavatele – dataset obsahuje p?es 500 r?zn?ch publisher?, ale prodeje jsou koncentrov?ny do n?kolika velk?ch firem. Spo??tali jsme, ?e nej?sp??n?j??m vydavatelem (sou?tem glob?ln?ch prodej?) je Nintendo (v?ce ne? 1,5 miliardy prodan?ch kopi? her, kter? vydalo), n?sleduje Electronic Arts (~1,1 mld) a potom Activision, Sony, Ubisoft atd. Deset nejv?t??ch vydavatel? pokr?v? podstatnou ??st celkov?ch prodej? (viz graf n??e). Tyto statistiky potvrzuj? o?ek?van? trendy – dominanci Nintenda a EA v hern?m pr?myslu a silnou roli ak?n?ch a sportovn?ch her.
+
+
+6.5 Vizualizace dat a zji?t?n?
+Pro lep?? pochopen? dat jsme vytvo?ili ?adu graf?: krabicov? grafy (boxploty) pro rozd?len? hodnot, histogramy ?etnost?, bodov? grafy pro zkoum?n? z?vislost?, sloupcov? grafy pro porovn?n? kategori? a tak? v?se?ov? grafy (pie charts) pro pod?ly. N??e uv?d?me n?kter? p??klady t?chto vizualizac? spolu s interpretac?: 
+
+Obr. 1: Rozlo?en? cen produkt? na Amazonu.
+
+Graf zobrazuje vedle sebe boxploty p?vodn? ceny (price_before_usd, vlevo) a ceny po slev? (price_after_usd, vpravo) na logaritmick? ose v USD.
+* Medi?n p?vodn? ceny je p?ibli?n? 18 USD, medi?n zlevn?n? ceny kolem 9 USD, co? jasn? ukazuje posun dol?.
+* IQR p?vodn?ch cen se pohybuje zhruba od 9 USD do 47 USD, zat?mco u zlevn?n?ch cen od 4 USD do 22 USD, tedy po slev? je cenov? rozmez? o n?co u???.
+* Outliery (te?ky) dosahuj? cen ve stovk?ch i tis?c?ch dolar? (nap?. pr?miov? polo?ky kolem 500–1 000 USD); logaritmick? osa z?rove? umo??uje vid?t i nejlevn?j?? produkty v ??du jednotek dolar?.
+Celkov? tento graf potvrzuje, ?e dataset zahrnuje ?irok? spektrum cen od levn?ch polo?ek pod 5 USD a? po luxusn? zbo?? rozsahem cen, a ?e slevy v?razn? sni?uj? st?edn? hodnotu cenov?ho rozd?len?.
+ 
+
+Obr. 2: Histogram procentu?ln?ch slev
+
+Krom? boxplotu jsme pro Amazon data vykreslili tak? histogram procentu?ln?ch slev, kter? uk?zal dv? nej?ast?j?? skupiny produkt? – jedny se slevou minim?ln? (0–5%) a jin? s v?razn?mi slevami okolo 40–60% (v?t?ina polo?ek spad? pr?v? do rozmez? 40–60% slevy, co? koresponduje s pr?m?rem ~42%). 
+
+Obr. 3: Bodov? graf z?vislosti ceny a hodnocen?
+
+Na tomto scatter plotu („Amazon — Price After Discount vs Rating“) vid?me rozpt?len? bod? podle ceny po slev? (v USD) a u?ivatelsk?ho hodnocen? (1–5 hv?zd). Graf ukazuje:
+* Produkty s velmi n?zkou cenou (pod 10 USD) i produkty s cenou v ??du stovek USD dosahuj? podobn? vysok?ch hodnocen? (cca 4–5 hv?zd).
+* Body jsou rozpt?len? nap??? celou ???kou osy cen, bez zjevn?ho trendu vzestupu ?i poklesu hodnocen? s rostouc? cenou.
+* To potvrzuje n?zkou korelaci mezi cenou po slev? a ratingem — cenov? hladina nem? v?razn? vliv na pr?m?rn? hodnocen?.
+Celkov? scatter plot dopl?uje boxplot, ukazuje, ?e a?koliv slevy v?znamn? sni?uj? cenu, kvalita (ve smyslu hodnocen?) je vysoce konzistentn? nap??? celou ?k?lou cen.
+ 
+
+Obr. 4: Vztah po?tu instalac? a hodnocen? u aplikac? (Google Play).
+
+Tento bodov? graf zn?zor?uje ka?dou aplikaci jako bod v sou?adnic?ch: horizont?ln? logaritmus po?tu instalac? (10^1 = 10 instalac?, 10^9 = 1 miliarda) a vertik?ln? jej? pr?m?rn? u?ivatelsk? hodnocen?. Graf ukazuje zaj?mav? trend: valn? v?t?ina aplikac? m? hodnocen? mezi 4.0 a 5.0 (vysok? sk?re) bez ohledu na po?et sta?en? – body jsou naho?e nap??? celou osou X. I aplikace s velmi mal?m po?tem instalac? (10–100) ?asto dosahuj? hodnocen? 4–5. Naopak aplikac? s hodnocen?m pod 3.0 je m?lo a v?t?inou maj? tak? ni??? po?et instalac? (lev? spodn? roh grafu). Aplikace s extr?mn? vysok?m po?tem sta?en? (prav? okraj, kolem $10^8$–$10^9$) maj? hodnocen? p?ev??n? v rozmez? 4.1–4.6 – zd? se tedy, ?e mega-popul?rn? aplikace si udr?uj? solidn?, ale ne nutn? nejvy??? mo?n? hodnocen?. Tento graf ilustruje, ?e po?et instalac? nep??mo souvis? s hodnocen?m: ?pi?kov? hodnocen? jsou i niche aplikace s m?lo u?ivateli, zat?mco glob?ln? hity mohou m?t hodnocen? lehce nad 4.0 (co? je st?le velmi dobr?). 
+
+Obr. 5: Boxplot hodnocen? v top 5 kategori?ch
+
+Zaj?mav? byl tak? krabicov? graf hodnocen? v top 5 kategori?ch (Family, Game, Tools, Medical, Business): uk?zal, ?e medi?ny hodnocen? se mezi kategoriemi li?? jen m?rn? – nap?. kategorie Family a Game m?ly medi?n ~4.3, zat?mco Business lehce ni??? (~4.0). To nazna?uje, ?e u?ivatelsk? spokojenosti jsou vysok? nap??? r?zn?mi typy aplikac?, jen u pracovn?ch a n?strojov?ch app m??e b?t hodnocen? o n?co p??sn?j??. 
+
+Obr. 6: Po?et aplikac? v jednotliv?ch kategori?ch
+
+Sloupcov? graf po?tu aplikac? v jednotliv?ch kategori?ch pak zd?raznil dominanci kategorie Family (nejvy??? sloupec, ~18% v?ech aplikac?) a Game, oproti minoritn?m kategori?m. 
+
+
+Obr. 7: Historick? v?voj glob?ln?ch prodej? videoher podle roku vyd?n?.
+
+??ra zn?zor?uje sou?et ro?n?ch glob?ln?ch prodej? v?ech her vydan?ch v dan?m roce (v milionech kus?). Je vid?t v?razn? trend: prodeje videoher pozvolna rostly od 80. let, na p?elomu 80/90. let se pohybovaly kolem 50–100 milion? ro?n?, v polovin? 90. let za?aly strm?ji stoupat a okolo roku 2008–2009 dos?hly vrcholu – v roce 2009 celkov? glob?ln? prodeje her ?inily t?m?? 680 milion? kus?. Toto obdob? odpov?d? ??e velmi ?sp??n?ch konzol? (Wii, Xbox 360, PS3) a hit? jako Wii Sports. Pot? vid?me pokles – po roce 2010 prodeje klesaj?, v roce 2015 byly kolem 275 mil. a v roce 2017 dokonce jen ~10 mil. (dataset ji? po roce 2016 obsahuje minimum dat, proto?e pravd?podobn? nejsou zahrnuty digit?ln? distribuce na nov? generace konzol?). Tento graf ilustruje n?stup a ?stup jednotliv?ch generac? hern?ho pr?myslu. 
+
+
+
+
+Obr. 8: Top 10 vydavatel? dle glob?ln?ch prodej?
+
+Krom? tohoto ?asov?ho grafu jsme p?ipravili tak? sloupcov? grafy pro srovn?n? prodej? podle kategori? – nap??klad graf Top 10 vydavatel? dle glob?ln?ch prodej? uk?zal, ?e Nintendo dominuje (nejvy??? sloupec ~1700 mil.), n?sledovan? EA (~1000 mil.) a dal??mi (viz v??e). Vizualizace pro dataset prodej? her n?m pomohly l?pe pochopit historick? trendy (n?r?st a pokles prodej?), profil nej?sp??n?j??ch ??nr? a firem i geografick? rozd?ly v oblib? videoher.
+
+
+Obr. 9: Vztah d?lky recenze a sentimentu (Google Play Store)
+
+Bodov? graf ukazuje, ?e nejv?ce recenz? do ? 600 znak? m?v? lehce kladn? sentiment (0 – 0,25). S del??m textem se hodnocen? rozptyluje a ?ast?ji kles? k nule ?i m?rn? do z?poru, tak?e obs?hlej?? koment??e b?vaj? kriti?t?j??. Extr?mn? negativn? ?i pozitivn? postoje se vyskytuj? jen v?jime?n?.
+
+Shrnut?: Datov? ??st projektu zahrnovala pr?ci se t?emi rozs?hl?mi a r?znorod?mi datasety. U ka?d?ho z nich bylo nutn? prov?st d?kladn? p?edzpracov?n? – od ?i?t?n? a konverz? dat p?es ulo?en? do vhodn? datab?ze (MongoDB) a? po v?po?et souhrnn?ch statistik. N?sledn? explora?n? anal?za a vizualizace odhalily zaj?mav? informace: na Amazonu v?razn? slevy a vysok? hodnocen? produkt?, na Google Play dominanci ur?it?ch kategori? a obecn? pozitivn? u?ivatelsk? sk?re, a v hern?m pr?myslu vrchol prodej? kolem roku 2009 a p?evahu n?kolika m?lo velk?ch hr??? na trhu. Tato zji?t?n? tvo?? z?klad pro dal??, hlub?? analytick? ?lohy v r?mci semestr?ln?ho projektu.
+7 Dotazy
+V t?to kategorii najdete 30 netrivi?ln?ch p??klad? MongoDB dotaz? rozd?len?ch do p?ti hlavn?ch oblast?: Pr?ce s daty (CRUD), Agrega?n? funkce, Vyhled?v?n? a indexov?n?, Cluster a shardov?n? a Sch?ma a validace. 
+Kategorie 1 – Pr?ce s daty (CRUD)
+Dotaz 6:
+db.vgsales.bulkWrite([
+  {
+    updateMany: {
+      filter: { Platform: "PS4" },
+      update: { $set: { LastUpdated: new Date() } }
+    }
+  },
+  {
+    deleteMany: { filter: { Year: { $lt: 2000 } } }
+  },
+  {
+    insertOne: {
+      document: {
+        Rank:         1,
+        Name:         "New Indie",
+        Platform:     "PC",
+        Year:         2025,
+        Genre:        "Indie",
+        Publisher:    "DevLab",
+        NA_Sales:     1.2,
+        EU_Sales:     0.7,
+        JP_Sales:     0.4,
+        Other_Sales:  0.2,
+        Global_Sales: 2.5,
+        LastUpdated:  new Date()
+      }
+    }
+  }
+]);
+ 
+
+Tento dotaz demonstruje efektivn? prov?d?n? v?ce CRUD operac? v r?mci jednoho bulkWrite vol?n?. Nejprve aktualizuje v?echna PS4 data s aktu?ln?m timestampem, pot? odstran? star? z?znamy p?ed rokem 2000 a nakonec p?id? zcela nov? dokument.
+
+
+
+
+Kategorie 2 – Agrega?n? funkce
+Dotaz 12:
+db.vgsales.aggregate([
+  { $match: { Year: { $ne: null } } },
+  { $group: {
+      _id: { $subtract: [ "$Year", { $mod: [ "$Year", 10 ] } ] },
+      totalSales: { $sum: "$Global_Sales" }
+  } },
+  { $project: {
+      decade: { $concat: [ { $toString: "$_id" }, "s" ] },
+      totalSales: 1,
+      _id: 0
+  } },
+  { $sort: { decade: 1 } }
+]);
+
+Tento dotaz vyu??v? kombinaci oper?tor? $subtract a $mod k v?po?tu desetilet? pro ka?d? rok a pot? pomoc? $group a $sum spo??t? sou?et glob?ln?ch prodej? za ka?d? desetilet?.
+Kategorie 3 – Vyhled?v?n? a indexov?n?
+Dotaz 15:
+db.amazon.createIndex(
+  { category: 1, discount_percentage: -1, price_after_discount: -1 },
+  { name: "CategoryDiscountPriceIdx" }
+);
+ 
+db.amazon.find(
+  {
+    category: /^Home&Kitchen\|/,
+    discount_percentage: { $gte: 10 }
+  },
+  {
+    _id: 0,
+    product_name: 1,
+    category: 1,
+    price_before_discount: 1,
+    price_after_discount: 1,
+    discount_percentage: 1,
+    realDiscountValue: {
+      $subtract: ["$price_before_discount", "$price_after_discount"]
+    }
+  }
+)
+.sort({ discount_percentage: -1, price_after_discount: 1 })
+.hint("CategoryDiscountPriceIdx")
+.limit(10);
+ 
+
+Dotaz vyb?r? produkty z kategorie „Home&Kitchen“ s alespo? 10% slevou, spo??t? skute?nou hodnotu slevy (realDiscountValue) a se?ad? je podle velikosti slevy a ceny. .hint() zajist? efektivn? pou?it? slo?en?ho indexu.
+
+Kategorie 4 – Cluster a shardov?n?
+
+Dotaz 24:
+sh.addShardTag("rs-shard-01", "A-M");
+sh.addShardTag("rs-shard-02", "N-S");
+sh.addShardTag("rs-shard-03", "T-Z");
+sh.addTagRange(
+  "Ecommerce.vgsales",
+  { Name: MinKey(), Platform: MinKey() },
+  { Name: "M", Platform: MaxKey() },
+  "A-M"
+);
+sh.addTagRange(
+  "Ecommerce.vgsales",
+  { Name: "N", Platform: MinKey() },
+  { Name: "S", Platform: MaxKey() },
+  "N-S"
+);
+sh.addTagRange(
+  "Ecommerce.vgsales",
+  { Name: "T", Platform: MinKey() },
+  { Name: MaxKey(), Platform: MaxKey() },
+  "T-Z"
+);
+db.getSiblingDB("config").tags.find({}).forEach(printjson);
+
+Zone sharding umo??uje sm?rovat dotazy o datech na konkr?tn? shardy podle definovan?ch rozsah?: n?zvy her za??naj?c? A–M jdou na rs-shard-01, N–S na rs-shard-02 a T–Z na rs-shard-03.
+
+Kategorie 5 – Nested (embedded) dokumenty
+Dotaz 26:
+db.apps_meta.aggregate([
+  {
+    $match: {
+      reviews: { $not: { $elemMatch: { Sentiment_Polarity: { $lt: 0 } } } },
+      $expr: { $gt: [{ $size: "$reviews" }, 5] }
+    }
+  },
+  {
+    $project: {
+      _id: 0,
+      appName: 1,
+      totalReviews: { $size: "$reviews" },
+      sentimentPolarities: {
+        $map: {
+          input: "$reviews",
+          as: "r",
+          in: "$$r.Sentiment_Polarity"
+        }
+      }
+    }
+  }
+]);
+ 
+
+Dotaz vyb?r? aplikace, kter? maj? v?ce ne? 5 recenz? a ??dn? z nich nen? negativn? (Sentiment_Polarity < 0). V?stupem je n?zev aplikace, celkov? po?et recenz? a seznam v?ech hodnot sentimentu (Sentiment_Polarity) z vno?en?ch dokument? v poli reviews.
+Pozn?mka: Vzhledem k rozs?hlosti a komplexnosti v?ech 30 p??klad?, zahrnuj?c?ch r?zn? sc?n??e CRUD, agregac?, indexov?n?, shardov?n? i nested dokumenty, naleznete kompletn? sadu zb?vaj?c?ch dotaz? v souboru dotazy.txt.
+Z?v?r
+V t?to semestr?ln? pr?ci byl ?sp??n? navr?en a nasazen distribuovan? datab?zov? klastr na b?zi MongoDB 6.0.2, vyu??vaj?c? sharding, replikaci a kontejnerizaci pomoc? Dockeru. Implementace pokryla ?ty?i hlavn? kroky: definici architektury, automatizovan? zprovozn?n? cel?ho prost?ed?, import a ?i?t?n? heterogenn?ch datov?ch sad (Amazon, Google Play, Video Game Sales) a z?kladn? pr?zkumnou anal?zu s vizualizacemi.
+Projekt prok?zal vysokou flexibilitu dokumentov?ho modelu, jednoduchou ?k?lovatelnost a spolehlivou dostupnost dat. Z?rove? by bylo vhodn? doplnit hloubkov? v?konov? testy a srovn?n? s rela?n?mi syst?my, roz???it ??st s monitoringem a vyhodnocen?m re?ln? z?t??e. P?esto ?e?en? poskytuje solidn? z?klad pro dal?? rozvoj—mo?nosti roz???en? o detailn? benchmarking, pokro?ilou bezpe?nost ?i integraci s cloudov?mi slu?bami otev?raj? cestu k profesion?ln?mu nasazen? v re?ln?m provozu.
+Zdroje
+* Amazon Sales Dataset
+Karkavelraja J., Amazon Sales Dataset, Kaggle. Dataset produkt? z eshopu Amazon (1465 z?znam?, 16 sloupc?).
+https://www.kaggle.com/datasets/karkavelrajaj/amazon-sales-dataset
+* Zenodo – Amazon Data
+“This dataset is having the data scraped from the Official Website of Amazon”, Zenodo. Dodate?n? popis p?vodu a struktury Amazon dat.
+https://zenodo.org/records/10157504#:~:text=This%20dataset%20is%20having%20the,the%20Official%20Website%20of%20Amazon
+* SAS Communities Library
+Amazon Sales Dataset – EDA of Products Purchased at Original Price, SAS Communities Library. Metodika ?i?t?n? cenov?ch pol? a procentu?ln?ch slev.
+https://communities.sas.com/t5/SAS-Communities-Library/Amazon-Sales-Dataset-EDA-of-Products-Purchased-at-Original-Price/ta-p/949725#:~:text=We%20also%20remove%20the%20character,data%20amazon_data_clean_numeric%3B%20set%20work
+* Google Play Store Apps
+Google Play Store Apps, Kaggle. Dataset mobiln?ch aplikac? (10841 z?znam?, 13 sloupc?).
+https://www.kaggle.com/datasets/lava18/google-play-store-apps
+* Medium – vivdto
+Vividto, Data Science: Is it possible to predict the rating of Google Play Store Apps based on the given features?, Medium. Detailn? popis zdroje a jeho atribut?.
+https://medium.com/@vivdto/data-science-is-it-possible-to-predict-the-rating-of-google-play-store-apps-based-on-the-given-1a8dc369d062#:~:text=Data%20Source%20Details
+* DataCareer.de
+Exploratory Data Analysis in Python, DataCareer blog. Pr?vodce EDA postupu nad Google Play datasetem.
+https://www.datacareer.de/blog/exploratory-data-analysis-in-python/#:~:text=A%20guide%20to%20Exploratory%20Data,App%2010841
+* Medium – Tamogh Nasa
+Tamogh Nasa, All You Really Need to Know: Python Notebook Advanced Pandas, Medium. N?vody na ?i?t?n? a transformaci dat pomoc? Pandas.
+https://tamoghnasaha-22.medium.com/all-you-really-need-to-know-python-notebook-advanced-pandas-da1697aee647
+* Medium – CloudCraftz
+CloudCraftz, Google Play Store Ratings & Reviews Analysis, Medium. Dal?? p??klad EDA a vizualizace hodnocen? aplikac?.
+https://medium.com/cloudcraftz/googleplaystore-ratings-reviews-20d2943a11ee#:~:text=Google%20Play%20Store%20Data%20Analysis,object%202%20Rating%209367
+* Video Game Sales
+Video Game Sales, Kaggle. Historick? data o prodej?ch videoher (16 598 z?znam?, 11 sloupc?).
+https://www.kaggle.com/datasets/gregorut/videogamesales
+
+
+
+P??lohy
+sem
+|   folder_structure.txt
+|   semestralni_prace_bsqbd.docx
+|      
++---Data
+|   |   amazon.csv
+|   |   analyse_data.py
+|   |   googleplaystore.csv
+|   |   googleplaystore_user_reviews.csv
+|   |   vgsales.csv
+|   |   
+|   +---plots
+|   |       myplot.png
+|   |       plot_2025-04-17 17-00-48_10.png
+|   |       plot_2025-04-17 17-00-48_11.png
+|   |       plot_2025-04-17 17-00-48_4.png
+|   |       plot_2025-04-17 17-00-48_5.png
+|   |       plot_2025-04-17 17-00-48_6.png
+|   |       plot_2025-04-17 17-00-48_7.png
+|   |       plot_2025-04-17 17-00-48_8.png
+|   |       plot_2025-04-17 17-00-48_9.png
+|   |       plot_2025-04-17 19-31-03_0.png
+|   |       plot_2025-04-17 19-31-03_1.png
+|   |       plot_2025-04-17 19-31-03_2.png
+|   |       plot_2025-04-17 19-31-03_3.png
+|   |       
+|   \---raw
+|           amazon.csv
+|           googleplaystore.csv
+|           googleplaystore_user_reviews.csv
+|           vgsales.csv
+|           
++---Dotazy
+|       dotazyMongoDB.txt
+|       
+\---Funkcni reseni
+    |   .env
+    |   docker-compose.yml
+    |   
+    +---keyfile
+    |       Dockerfile
+    |       mongodb-keyfile
+    |       
+    \---scripts
+            auth.js||
+            import_datasets.sh
+            init-configserver.js
+            init-router.js
+            init-shard01.js
+            init-shard02.js
+            init-shard03.js
+            init_cluster.sh
+            mongosh.js
+            wait-for-it.sh
+            
+
+
+
+1. Slo?ka Data
+Soubor / podslo?kaStru?n? charakteristikaamazon.csv, googleplaystore.csv, googleplaystore_user_reviews.csv, vgsales.csvO?i?t?n? CSV soubory (ulo?en? v ko?enov?m adres??i) obsahuj?c? data po zpracov?n? v analyse_data.py.analyse_data.pyPython skript, kter? na??t?, ?ist? a prov?d? prvn? analytick? kroky nad t?mito datasety.plots/
+Automaticky generovan? grafy ve form?tu PNG (plot_*.png, myplot.png apod.).raw/P?vodn?, neupraven? CSV soubory; 2. Slo?ka Datazy
+SouborStru?n? charakteristikadotazyMongoDB.txtJeden soubor obsahuj?c? v?echny po?adovan? dotazy.
+U ka?d?ho dotazu je nejprve uvedeno zad?n? v p?irozen?m jazyce (stru?n? vysv?tlen?), n?sledovan? ekvivalentn?m ?e?en?m v MongoDB Query Language (MQL).3. Slo?ka Funk?n?_reseni
+Soubor / podslo?kaStru?n? charakteristikadocker-compose.ymlKonfigurace kontejner? pro spu?t?n? shardovan?ho MongoDB clusteru a podp?rn?ch slu?eb..envKonfigura?n? prom?nn? (hosty, porty, p??stupov? hesla). Soubor je p?ilo?en pouze pro pot?eby hodnocen?.keyfile/ ? mongodb-keyfileTajn? kl?? pro intern? autentizaci nod? v clusteru.scripts/Bash & JavaScript skripty nutn? k inicializaci clusteru, vytvo?en? u?ivatel?, importu dataset? a ov??en? funk?nosti:
+2
+
+

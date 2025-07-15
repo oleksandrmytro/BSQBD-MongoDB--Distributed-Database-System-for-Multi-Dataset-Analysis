@@ -1,0 +1,857 @@
+1. Práce s daty(CRUD)
+
+Dotaz 1:
+db.amazon.insertOne({
+  product_id: "P1001",
+  product_name: "USB-C Charger",
+  category: "Electronics|Accessories",
+  price_before_discount: 29.99,
+  price_after_discount: 19.99,
+  rating: 4.7,
+  rating_count: 150,
+  reviews: []
+});
+
+Vysvětlení: vkládá nový produkt do kolekce amazon pomocí insertOne, kde nastaví základní informace jako ID, název, kategorii, cenu a hodnocení.
+
+Dotaz 2:
+db.amazon.updateMany(
+  { category: /^Electronics\|/, rating: { $gte: 4.0 } },
+  [
+    { $set: {
+        // zaokrouhlí původní cenu před slevou o 10 % na dvě desetinná místa
+        price_before_discount: {
+          $round: [{ $multiply: ["$price_before_discount", 1.10] }, 2]
+        },
+        // pokud je sleva ≥ 20 %, navýší cenu po slevě o 5 %, jinak ji nechá beze změny a zaokrouhlí
+        price_after_discount: {
+          $round: [
+            { $multiply: [
+                "$price_after_discount",
+                { $cond: [{ $gte: ["$discount_percentage", 20] }, 1.05, 1.0] }
+            ] },
+            2
+          ]
+        }
+      }
+    },
+    { $addFields: {
+        // přidá pole ukazující rozdíl mezi cenou před a po slevě
+        discountIncrease: {
+          $round: [
+            { $subtract: ["$price_before_discount", "$price_after_discount"] },
+            2
+          ]
+        }
+      }
+    }
+  ]
+);
+
+Vysvětlení: Tento příkaz nejprve vybere všechny vysokohodnocené produkty (rating ≥ 4.0) z kategorie začínající na „Electronics|“, 
+poté v první fázi pipeline ($set) zvýší původní cenu před slevou o 10 % (výsledek zaokrouhlí na dvě desetinná místa) a 
+upraví cenu po slevě – pokud je sleva alespoň 20 %, navýší ji o dalších 5 %, jinak ji nechá nezměněnou (také zaokrouhlí), 
+a nakonec ve fázi $addFields přidá nové pole discountIncrease, které ukazuje rozdíl mezi upravenou cenou před a po slevě (opět zaokrouhlený na dvě desetinná místa).
+
+Dotaz 3:
+db.amazon.deleteMany(
+  { rating_count: { $lt: 5 } }
+);
+
+Vysvětlení: deleteMany odstraní všechny produkty, které mají méně než 5 recenzí (rating_count < 5).
+
+Dotaz 4:
+db.vgsales.updateOne(
+  { Name: "Wii Sports", Platform: "Wii" },
+  {
+    $set: {
+      Publisher: "Nintendo Official"
+    },
+    $setOnInsert: {
+      createdAt: new Date()
+    },
+    $currentDate: {
+      lastModified: true
+    },
+    $inc: {
+      updateAttempts: 1
+    }
+  },
+  { upsert: true }
+);
+
+Vysvětlení: Tento příkaz vyhledá dokument s Name == "Wii Sports" a Platform == "Wii" a buď ho aktualizuje, 
+nebo – pokud neexistuje – vloží nový (díky upsert:true). Operátor $set nastaví pole Publisher na "Nintendo Official", 
+$setOnInsert při vložení nového dokumentu přidá pole createdAt s aktuálním časem, $currentDate vždy uloží 
+současný timestamp do pole lastModified a $inc zvýší (nebo vytvoří s hodnotou 1) čítač updateAttempts, 
+který zaznamenává počet provedených aktualizací.
+
+Dotaz 5:
+db.vgsales.updateOne(
+  { Name: "Indie Hit", Platform: "Switch" },
+  {
+    $setOnInsert: {
+      Rank:         1,
+      Name:         "Indie Hit",
+      Platform:     "Switch",
+      Year:         2025,
+      Genre:        "Indie",
+      Publisher:    "StudioX",
+      NA_Sales:     0.1,
+      EU_Sales:     0.1,
+      JP_Sales:     0.1,
+      Other_Sales:  0.1,
+      Global_Sales: 0.5
+    }
+  },
+  { upsert: true }
+);
+
+Vysvětlení: vloží nový dokument o hře „Indie Hit“ na platformě Switch, pokud takový záznam ještě neexistuje.
+
+Dotaz 6:
+db.vgsales.bulkWrite([
+  {
+    updateMany: {
+      filter: { Platform: "PS4" },
+      update: { $set: { LastUpdated: new Date() } }
+    }
+  },
+  {
+    deleteMany: { filter: { Year: { $lt: 2000 } } }
+  },
+  {
+    insertOne: {
+      document: {
+        Rank:         1,
+        Name:         "New Indie",
+        Platform:     "PC",
+        Year:         2025,
+        Genre:        "Indie",
+        Publisher:    "DevLab",
+        NA_Sales:     1.2,
+        EU_Sales:     0.7,
+        JP_Sales:     0.4,
+        Other_Sales:  0.2,
+        Global_Sales: 2.5,
+        LastUpdated:  new Date()
+      }
+    }
+  }
+]);
+
+Vysvětlení: bulkWrite umožňuje provést více CRUD operací (hromadnou aktualizaci, mazání a vložení) v jediném volání pro vyšší efektivitu.
+
+2. Agregační funkce
+
+Dotaz 7:
+db.amazon.aggregate([
+  { $project: {
+      topCategory: { $arrayElemAt:[{ $split:["$category","|"] }, 0] },
+      rating: 1
+  } },
+  { $match: { rating: { $gte: 3 } } },
+  { $group: {
+      _id: "$topCategory",
+      avgRating: { $avg: "$rating" },
+      count: { $sum: 1 }
+  } },
+  { $addFields: {
+      avgRating: { $round: ["$avgRating", 2] }
+  } },
+  { $sort: { avgRating: -1 } }
+]);
+
+
+Vysvětlení: extrahuje hlavní kategorii produktů, vyfiltruje produkty s hodnocením nad 3, seskupí je podle kategorie, vypočítá průměrné hodnocení a počet produktů a setřídí je podle průměrného hodnocení.
+
+Dotaz 8:
+db.vgsales.aggregate([
+  { $match: { Year: { $gte: 2000 } } },
+
+  { $project: {
+      Genre: 1,
+      regionSales: [
+        { region: "NA",    sales: "$NA_Sales" },
+        { region: "EU",    sales: "$EU_Sales" },
+        { region: "JP",    sales: "$JP_Sales" },
+        { region: "Other", sales: { 
+            $subtract: [
+              "$Global_Sales",
+              { $add: [ "$NA_Sales", "$EU_Sales", "$JP_Sales" ] }
+            ]
+          }
+        }
+      ]
+  }},
+
+  { $unwind: "$regionSales" },
+  { $group: {
+      _id: { genre: "$Genre", region: "$regionSales.region" },
+      totalGlobalSales: { $sum: "$regionSales.sales" },
+      gamesCount:       { $sum: 1 }
+  }},
+
+  { $project: {
+      _id: 0,
+      Genre:           "$_id.genre",
+      Region:          "$_id.region",
+      TotalSales:      "$totalGlobalSales",
+      AvgSalesPerGame: { $divide: ["$totalGlobalSales", "$gamesCount"] }
+  }},
+
+  { $sort: { TotalSales: -1 } }
+]);
+
+Vysvětlení: analyzuje prodeje her po roce 2000 v různých regionech, vytvoří nové pole regionálních prodejů, seskupí výsledky podle žánru a regionu a spočítá průměrné prodeje na hru.
+
+Dotaz 9:
+db.reviews.aggregate([
+  { $group:   { _id:{ app:"$App", sentiment:"$Sentiment" }, count:{ $sum:1 } } },
+  { $group:   { _id:"$_id.app",
+                counts:{ $push:{ k:"$_id.sentiment", v:"$count" } },
+                total:{ $sum:"$count" } } },
+  { $addFields:{ distArray:{
+                  $map:{ input:"$counts", as:"c",
+                         in:{ k:"$$c.k", p:{ $divide:["$$c.v","$total"] } } }
+                } } },
+  { $unwind:  "$distArray" },
+  { $addFields:{ term:{
+                  $multiply:[ -1,
+                    { $multiply:["$distArray.p",{ $ln:"$distArray.p" }] }
+                  ]
+                } } },
+  { $group:   { _id:"$_id", entropy:{ $sum:"$term" } } },
+  { $sort:    { entropy:-1 } },
+  { $limit:   5 },
+  { $project: { _id:0, app:"$_id", entropy:1 } }
+])
+.forEach(doc=>printjson(doc))
+
+Vysvětlení: Tento dotaz pro každý App počítá Shannonovu entropii distribuce sentimentů (Positive/Neutral/Negative) v uživatelských recenzích. Entropie měří „rozptýlení“ názorů – čím více jsou názory mixované (např. rovnoměrně rozdělené mezi tři kategorie), tím je entropie vyšší. Výsledek tedy vypíše pět aplikací, u nichž jsou názory uživatelů nejrozdílnější.
+
+Dotaz 10:
+db.amazon.aggregate([
+  { $match: {
+      discount_percentage: { $exists: true, $gte: 0 }
+  }},
+
+  { $bucket: {
+      groupBy:    "$discount_percentage",
+      boundaries: [0, 21, 51, 81, 101],
+      default:    "Over 100%",
+      output: {
+        count:             { $sum: 1 },
+        avgBeforeDiscount: { $avg: "$price_before_discount" },
+        avgAfterDiscount:  { $avg: "$price_after_discount" }
+      }
+  }},
+
+  { $sort: { _id: 1 } },
+
+  { $project: {
+      _id:                   0,
+      discountRange:         "$_id",
+      productCount:          "$count",
+      avgPriceBeforeDiscount:{ $round: ["$avgBeforeDiscount", 2] },
+      avgPriceAfterDiscount: { $round: ["$avgAfterDiscount", 2] }
+  }}
+]);
+
+Vysvětlení: Tento dotaz nejprve vybere všechny produkty se slevou od 0 %, pak je rozdělí do intervalů (0–20 %, 21–50 %, 51–80 %, 81–100 %, nad 100 %), spočítá počet produktů v každém intervalu a průměrné ceny před a po slevě, následně setřídí intervaly vzestupně a nakonec formátuje výstup přejmenováním pole intervalu na discountRange a zaokrouhlením průměrných cen na dvě desetinná místa.
+
+Dotaz 11:
+db.vgsales.aggregate([
+  { $match: {
+      Name: { $regex: "pokemon", $options: "i" },
+      Year: { $gte: 1990 }
+  } },
+  { $sort: { Global_Sales: -1 } },
+  { $limit: 5 },
+  { $project: {
+      _id: 0,
+      Name: 1,
+      Platform: 1,
+      Year: 1,
+      Global_Sales: 1,
+      salesCategory: {
+        $cond: [
+          { $gte: ["$Global_Sales", 10] },
+          "Blockbuster",
+          "Niche"
+        ]
+      }
+  } }
+]);
+
+Vysvětlení: Filtrovat hry obsahující pokemon od roku 1990, setřídit podle globálních prodejů sestupně, vybrat top 5 a přidat pole salesCategory podle prahu 10 milionů.
+
+Dotaz 12:
+db.vgsales.aggregate([
+  { $match: { Year: { $ne: null } } },
+  { $group: {
+      _id: { $subtract: [ "$Year", { $mod: [ "$Year", 10 ] } ] },
+      totalSales: { $sum: "$Global_Sales" }
+  } },
+  { $project: {
+      decade: { $concat: [ { $toString: "$_id" }, "s" ] },
+      totalSales: 1,
+      _id: 0
+  } },
+  { $sort: { decade: 1 } }
+]);
+
+Vysvětlení: Vypočítá desetiletí pomocí \$subtract a \$mod, poté \$group sečte prodeje za každé desetiletí a \$sort seřadí chronologicky.
+
+3. Vyhledávání a indexování
+
+Dotaz 13:
+db.googleplaystore.createIndex(
+  { Category: 1, Rating: -1, Installs: -1 },
+  { name: "CatRatingInstalls" }
+);
+
+db.googleplaystore.find(
+  {
+    Category: "LIFESTYLE",
+    Rating:   { $gte: 4.3 },
+    Installs: { $gte: 500_000 }
+  },
+  {
+    _id:        0,
+    App:        1,
+    Category:   1,
+    Rating:     1,
+    Installs:   1
+  }
+)
+.sort({ Rating: -1, Installs: -1 })
+.hint("CatRatingInstalls")
+.limit(10)
+.forEach(doc => printjson(doc));
+
+Vysvětlení: Vytvoříme složený index CatRatingInstalls, který kombinuje pole Category, Rating a Installs. Díky tomu MongoDB dokáže efektivně filtrovat a řadit dokumenty bez nutnosti skenovat celou kolekci. Následný dotaz najde první 10 aplikací z kategorie LIFESTYLE s hodnocením ≥ 4.3 a počtem instalací ≥ 500 000, seřadí je sestupně podle hodnocení a počtu instalací a vynutí si použití právě tohoto indexu.
+
+Dotaz 14:
+db.amazon.createIndex(
+  { category: 1, rating: -1 },
+  {
+    name: "CategoryHighRatingIdx",
+    partialFilterExpression: {
+      rating: { $gte: 4.5 },
+      category: { $exists: true }
+    }
+  }
+);
+
+db.amazon.find(
+  {
+    rating: { $gte: 4.5 },
+    category: /^Electronics\|/
+  },
+  {
+    category: 1,
+    rating: 1,
+    product_name: 1,
+    _id: 0
+  }
+).sort({ rating: -1 }).hint("CategoryHighRatingIdx").limit(10);
+
+
+Vysvětlení: Vytvoříme částečný složený index na category a rating pro produkty s hodnocením ≥ 4.5.
+Dotaz hledá top produkty v kategorii "Electronics", seřazené podle hodnocení.
+.hint() vynutí použití optimalizovaného indexu.
+
+Dotaz 15:
+db.amazon.createIndex(
+  { category: 1, discount_percentage: -1, price_after_discount: -1 },
+  { name: "CategoryDiscountPriceIdx" }
+);
+
+db.amazon.find(
+  {
+    category: /^Home&Kitchen\|/,
+    discount_percentage: { $gte: 10 }
+  },
+  {
+    _id: 0,
+    product_name: 1,
+    category: 1,
+    price_before_discount: 1,
+    price_after_discount: 1,
+    discount_percentage: 1,
+    realDiscountValue: {
+      $subtract: ["$price_before_discount", "$price_after_discount"]
+    }
+  }
+)
+.sort({ discount_percentage: -1, price_after_discount: 1 })
+.hint("CategoryDiscountPriceIdx")
+.limit(10);
+
+Vysvětlení: Dotaz vybírá produkty z kategorie „Home&Kitchen“ s alespoň 10% slevou, spočítá skutečnou hodnotu slevy (realDiscountValue) a seřadí je podle velikosti slevy a ceny. .hint() zajistí efektivní použití složeného indexu.
+
+Dotaz 16:
+db.sessions.createIndex(
+  { lastActive: 1 },
+  { expireAfterSeconds: 3600, name: "LastActiveTTL" }
+);
+
+const now = new Date();
+db.sessions.insertMany([
+  { sessionId: "s1", lastActive: new Date(now.getTime() - 1000 * 60 * 30) },
+  { sessionId: "s2", lastActive: new Date(now.getTime() - 1000 * 60 * 90) }
+]);
+
+db.sessions.deleteMany({ lastActive: { $lt: new Date(Date.now() - 1000 * 60 * 60) } });
+
+printjson(
+  db.sessions.find(
+    { lastActive: { $gte: new Date(Date.now() - 1000 * 60 * 60) } }
+  )
+  .sort({ lastActive: -1 })
+  .toArray()
+);
+
+Vysvětlení: TTL index smaže dokumenty starší než 3600 s. Vložíme dvě session — jednu aktivní (30 min zpět), druhou expirovanou (90 min zpět). Ručně odstraníme expirovanou a ukážeme zbývající.
+
+Dotaz 17:
+db.vgsales.createIndex(
+  { Year: -1, Global_Sales: -1 },
+  {
+    name: "RecentBlockbustersIdx",
+    partialFilterExpression: { Year: { $gte: 2010 } }
+  }
+);
+
+db.vgsales.find(
+  { Year: { $gte: 2010 } },
+  { _id: 0, Name: 1, Platform: 1, Year: 1, Global_Sales: 1 }
+)
+.sort({ Year: -1, Global_Sales: -1 })
+.hint("RecentBlockbustersIdx")
+.limit(5)
+.forEach(doc => printjson(doc));
+
+Vysvětlení: Vytvoříme částečný index RecentBlockbustersIdx, který indexuje jen záznamy s Year ≥ 2010 a zároveň ukládá data řazená podle Year (desc) a Global_Sales (desc). Dotaz pak rychle najde pět nejnovějších a nejprodávanějších her od roku 2010, protože pomocí .hint() explicitně použije tento index a nemusí prohledávat starší data.
+
+Dotaz 18:
+db.amazon.createIndex(
+  { rating_count: -1 },
+  {
+    name: "HighRatingCount",
+    partialFilterExpression: { rating_count: { $gte: 100 } }
+  }
+);
+
+printjson(
+  db.amazon.find(
+    { rating_count: { $gte: 100 } },
+    { product_id: 1, product_name: 1, rating_count: 1 }
+  ).sort({ rating_count: -1 }).hint("HighRatingCount").limit(10).toArray()
+);
+
+Vysvětlení: Partial index HighRatingCount zahrnuje jen dokumenty s rating_count ≥ 100, což zrychluje vyhledávání. Dotaz vypíše top 10 takových produktů.
+
+Dotaz 19:
+db.googleplaystore.aggregate([
+  { $match: { Rating: { $gt: 4.0 } } },
+
+  { $lookup: {
+      from:         "reviews",
+      localField:   "App",
+      foreignField: "App",
+      as:           "allReviews"
+  }},
+
+  { $addFields: {
+      reviewCount: { $size: "$allReviews" }
+  }},
+
+  { $group: {
+      _id:         "$App",
+      Rating:      { $first: "$Rating" },
+      reviewCount: { $first: "$reviewCount" }
+  }},
+
+  { $sort: { reviewCount: -1 } },
+  { $limit: 5 },
+
+  { $project: {
+      _id:         0,
+      App:         "$_id",
+      Rating:      1,
+      reviewCount: 1
+  }}
+]).pretty();
+
+Vysvětlení: Dotaz vybere aplikace s hodnocením nad 4.0, pomocí $lookup připojí k nim recenze z kolekce reviews, spočítá je do reviewCount, seřadí podle něj sestupně, omezí na pět a ve výstupu zobrazí jen App, Rating a reviewCount.
+
+4. Cluster a shardování
+
+Dotaz 20:
+db.adminCommand({ enableSharding: "Ecommerce" });
+
+sh.shardCollection("Ecommerce.amazon", { product_id: "hashed" });
+sh.shardCollection("Ecommerce.vgsales", { Name: 1, Platform: 1 });
+
+printjson(sh.status());
+
+Vysvětlení: Zapne shardování databáze Ecommerce, rozdělí kolekce amazon a vgsales podle zvolených klíčů a vypíše aktuální stav. 
+
+Dotaz 21:
+var doc = db.vgsales.findOne({}, { Name: 1, Platform: 1 });
+
+sh.splitAt(
+  "Ecommerce.vgsales",
+  { Name: doc.Name, Platform: doc.Platform }
+);
+
+Vysvětlení: findOne získá vzorový dokument s poli Name a Platform. sh.splitAt pak rozdělí shardovací chunk v místě hodnot tohoto dokumentu, aby se vytvořil nový boundary.
+
+Dotaz 22:
+sh.shardCollection(
+  "Ecommerce.googleplaystore_new",
+  { _id: "hashed" },
+  { unique: false, numInitialChunks: 4 }
+);
+
+db.googleplaystore_new.insertMany(
+  db.googleplaystore.find().toArray()
+);
+
+Vysvětlení: Vytvoří novou kolekci googleplaystore_new se 4 hashovanými chunki a nakopíruje do ní existující data, aby byly rovnoměrně rozloženy. 
+
+Dotaz 23:
+print("=== BEFORE FAILOVER ===");
+rs.status().members.forEach(m => print(m.name, "–", m.stateStr));
+
+print("\nStepping down current PRIMARY for 60 seconds...");
+rs.stepDown(60);
+
+print("Waiting for new election…");
+sleep(5000);
+
+print("\n=== AFTER FAILOVER ===");
+rs.status().members.forEach(m => print(m.name, "–", m.stateStr));
+
+Vysvětlení: Skript v mongosh nejprve vypíše aktuální stav všech členů replica setu před failoverem, poté příkaz rs.stepDown(60) vynutí, aby dosavadní PRIMARY přešel na SECONDARY na 60 sekund, po krátké pauze proběhnou nové volby a závěrečný výpis rs.status() pak ukáže, který uzel se stal novým PRIMARY.
+
+Dotaz 24:
+sh.moveChunk(
+  "Ecommerce.googleplaystore_new",
+  { _id: MinKey },
+  "rs-shard-03",
+  false,
+  300000
+);
+
+Vysvětlení: Přesune první chunk (od MinKey) kolekce googleplaystore_new na shard rs-shard-03, s maximální dobou 5 minut pro úklid opuštěných dokumentů.
+
+Dotaz 25:
+sh.addShardTag("rs-shard-01", "A-M");
+sh.addShardTag("rs-shard-02", "N-S");
+sh.addShardTag("rs-shard-03", "T-Z");
+
+sh.addTagRange(
+  "Ecommerce.vgsales",
+  { Name: MinKey(), Platform: MinKey() },
+  { Name: "M", Platform: MaxKey() },
+  "A-M"
+);
+
+sh.addTagRange(
+  "Ecommerce.vgsales",
+  { Name: "N", Platform: MinKey() },
+  { Name: "S", Platform: MaxKey() },
+  "N-S"
+);
+
+sh.addTagRange(
+  "Ecommerce.vgsales",
+  { Name: "T", Platform: MinKey() },
+  { Name: MaxKey(), Platform: MaxKey() },
+  "T-Z"
+);
+
+db.getSiblingDB("config").tags.find({}).forEach(printjson);
+
+Vysvětlení: Definuje tagované rozsahy (zone sharding) pro vgsales: názvy her začínající A–M na shard rs-shard-01, N–S na rs-shard-02 a T–Z na rs-shard-03. Výpis v config.tags ověří nastavení.
+
+5. Nested (embedded) dokumenty
+
+Dotaz 26:
+db.apps_meta.aggregate([
+  {
+    $match: {
+      reviews: { $not: { $elemMatch: { Sentiment_Polarity: { $lt: 0 } } } },
+      $expr: { $gt: [{ $size: "$reviews" }, 5] }
+    }
+  },
+  {
+    $project: {
+      _id: 0,
+      appName: 1,
+      totalReviews: { $size: "$reviews" },
+      sentimentPolarities: {
+        $map: {
+          input: "$reviews",
+          as: "r",
+          in: "$$r.Sentiment_Polarity"
+        }
+      }
+    }
+  }
+]);
+
+
+Vysvětlení:Vybere aplikace s více než 5 recenzemi, kde žádná nemá negativní hodnocení, a zobrazí hodnoty polarity.
+
+Dotaz 27:
+db.apps_meta.aggregate([
+  { $match: { "reviews.0": { $exists: true } } },
+  {
+    $project: {
+      appName: 1,
+      totalReviewChars: {
+        $reduce: {
+          input: {
+            $filter: {
+              input: "$reviews",
+              as: "r",
+              cond: { $gt: [{ $strLenCP: "$$r.Translated_Review" }, 0] }
+            }
+          },
+          initialValue: 0,
+          in: { $add: ["$$value", { $strLenCP: "$$this.Translated_Review" }] }
+        }
+      }
+    }
+  }
+]);
+
+Vysvětlení: Vypočítá celkový počet znaků ze všech nepustých přeložených recenzí v aplikaci.
+
+Dotaz 28:
+db.apps_meta.updateMany(
+  {},
+  [{
+    $set: {
+      hasNegative: {
+        $anyElementTrue: {
+          $map: {
+            input: "$reviews",
+            as: "r",
+            in: { $lt: ["$$r.Sentiment_Polarity", 0] }
+          }
+        }
+      }
+    }
+  }]
+);
+
+Vysvětlení: Do dokumentů přidá pole hasNegative, které indikuje, zda existuje negativní recenze.
+
+Dotaz 29:
+db.apps_meta.aggregate([
+  { $match: { "reviews.0": { $exists: true } } },
+  {
+    $addFields: {
+      sortedByLength: {
+        $sortArray: {
+          input: {
+            $map: {
+              input: "$reviews",
+              as: "r",
+              in: {
+                review: "$$r",
+                length: { $strLenCP: "$$r.Translated_Review" }
+              }
+            }
+          },
+          sortBy: { length: -1 }
+        }
+      }
+    }
+  },
+  {
+    $project: {
+      _id: 0,
+      appName: 1,
+      top3LongestReviews: {
+        $map: {
+          input: { $slice: ["$sortedByLength", 3] },
+          as: "item",
+          in: "$$item.review"
+        }
+      }
+    }
+  }
+]);
+
+Vysvětlení: Získá tři nejdelší recenze podle počtu znaků pro každou aplikaci.
+
+Dotaz 30:
+db.apps_meta.updateMany(
+  {},
+  [
+    {
+      $set: {
+        reviews: {
+          $map: {
+            input: "$reviews",
+            as: "r",
+            in: {
+              $mergeObjects: [
+                "$$r",
+                {
+                  text: "$$r.Translated_Review",
+                  reviewLength: { $strLenCP: "$$r.Translated_Review" }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    { $unset: "reviews.Translated_Review" }
+  ]
+);
+
+Vysvětlení: Přidá do každé recenze textové pole text a reviewLength, a odstraní původní Translated_Review.
+
+Dotaz 31:
+db.apps_meta.aggregate([
+  { $match: { "reviews.0": { $exists: true } } },
+  {
+    $project: {
+      _id: 0,
+      appName: 1,
+      sentimentSummary: {
+        positiveCount: {
+          $size: {
+            $filter: {
+              input: "$reviews",
+              as: "r",
+              cond: { $gte: ["$$r.Sentiment_Polarity", 0.6] }
+            }
+          }
+        },
+        neutralCount: {
+          $size: {
+            $filter: {
+              input: "$reviews",
+              as: "r",
+              cond: {
+                $and: [
+                  { $lt: ["$$r.Sentiment_Polarity", 0.6] },
+                  { $gte: ["$$r.Sentiment_Polarity", 0] }
+                ]
+              }
+            }
+          }
+        },
+        negativeCount: {
+          $size: {
+            $filter: {
+              input: "$reviews",
+              as: "r",
+              cond: { $lt: ["$$r.Sentiment_Polarity", 0] }
+            }
+          }
+        }
+      }
+    }
+  }
+]);
+
+Vysvětlení: Vytvoří souhrn sentimentu pro každou aplikaci (pozitivní, neutrální, negativní počty).
+
+Dotaz 32:
+db.apps_meta.updateMany(
+  {},
+  [{
+    $set: {
+      reviews: {
+        $map: {
+          input: "$reviews",
+          as: "r",
+          in: {
+            $mergeObjects: [
+              "$$r",
+              {
+                reviewLength: {
+                  $cond: [
+                    { $gt: ["$$r.reviewLength", 0] },
+                    "$$r.reviewLength",
+                    { $strLenCP: "$$r.text" }
+                  ]
+                },
+                tags: {
+                  $cond: [
+                    { $lte: ["$$r.reviewLength", 100] },
+                    ["shortReview"],
+                    {
+                      $cond: [
+                        { $lte: ["$$r.reviewLength", 300] },
+                        ["mediumReview"],
+                        ["longReview"]
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }]
+);
+
+Vysvětlení: Označí recenze podle jejich délky tagem (shortReview, mediumReview, longReview).
+
+Dotaz 33:
+db.apps_meta.find(
+  {
+    reviews: {
+      $elemMatch: {
+        tags: "longReview",
+        reviewLength: { $gt: 300 },
+        Sentiment_Polarity: { $gt: 0 }
+      }
+    }
+  },
+  {
+    _id: 0,
+    appName: 1,
+    "reviews.$": 1
+  }
+)
+.sort({ appName: 1 })
+.limit(5);
+
+Vysvětlení: Najde aplikace s pozitivními, dlouhými recenzemi (více než 300 znaků), a zobrazí je.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
